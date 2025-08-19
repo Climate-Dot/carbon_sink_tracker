@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>LULC Map Viewer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Quicksand&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="controls">
+      <div id="logo-container">
+        <img src="logo.svg" alt="Logo" id="logo" />
+      </div>
+      <h2>Carbon Sink Tracker</h2>
+      <label
+        ><b>District:</b>
+          <!-- <select id="district"></select>  -->
+      </label>
+      <div id="district-checkboxes"></div> 
+      <!-- <label
+        >Year:
+        <select id="year"></select>
+      </label> -->
+      <label
+        ><b>Filter:</b>
+        <br />
+        <select id="lulcFilter">
+          <option value="all">LULC</option>
+          <option value="forest">Carbon Sink</option>
+          <option value="wetland">Wetland</option>
+        </select>
+      </label>
+      <label for="Year"
+        ><b>Year:</b><br />
+        <div id="yearSliderContainer">
+          <input
+            type="range"
+            id="yearSlider"
+            min="2015"
+            max="2022"
+            step="1"
+            value="2020"
+          />
+          <span id="yearDisplay">2020</span>
+        </div></label
+      >
+      <button id="submitBtn" onclick="loadLULC()">Load</button>
+      <br />
+    </div>
+    <div id="map"></div>
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>
