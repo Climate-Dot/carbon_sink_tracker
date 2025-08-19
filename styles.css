@@ -1,0 +1,106 @@
+html,
+body,
+#map {
+    height: 100%;
+    margin: 0;
+}
+
+* {
+    font-family: 'Quicksand', sans-serif;
+}
+
+#controls {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 275px;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.9);
+    padding: 20px 15px;
+    box-shadow: 2px 0 6px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 0;
+}
+
+#controls h2 {
+    text-align: center;
+    margin-bottom: 5%;
+    margin-top: 0;
+}
+
+#logo-container {
+    text-align: center;
+}
+
+#logo {
+    width: 100px;
+    height: auto;
+    opacity: 0.9;
+}
+
+#map {
+    margin-left: 300px;
+}
+
+label {
+    font-size: 14px;
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 2px;
+}
+
+button {
+    padding: 8px 12px;
+    background-color: #3f51b5;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: #2c3e9f;
+}
+
+.info.legend {
+    background: rgba(255, 255, 255, 0.9);
+    padding: 10px;
+    box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    font-size: 12px;
+    line-height: 18px;
+    max-width: 300px;
+}
+
+#yearSliderContainer {
+    /* z-index: 1000; */
+    background: rgba(238, 247, 255, 0.9);
+    padding: 8px 12px;
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    display: flex;
+    align-items: center;
+}
+
+#yearSlider {
+    width: 150px;
+}
+
+#yearDisplay {
+    margin-left: 10px;
+    font-weight: bold;
+}
+
+
+#district-checkboxes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    /* two equal-width columns */
+    gap: 6px 12px;
+    /* row-gap and column-gap */
+    margin-top: 6px;
+}

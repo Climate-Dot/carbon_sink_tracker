@@ -1,0 +1,10 @@
+Create districts table. 
+
+CREATE TABLE public.district_boundaries (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    area DOUBLE PRECISION,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    geom GEOMETRY(MultiPolygon, 4326)
+);
