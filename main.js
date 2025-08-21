@@ -66,11 +66,9 @@ fetch("http://localhost:8000/metadata")
   .then((data) => {
     const districtBoundary = data.district_boundary;
     const stateBoundary = data.state_boundary;
-    const lulcVector = data.lulc_vector;
-    const districtName = data.district_name;
-    const villageBoundary = data.village_boundary;
+    // const lulcVector = data.lulc_vector;
+    // const lulc = data.lulc;
 
-    // Draw district boundary (blue)
     const districtLayer = L.geoJSON(districtBoundary, {
       style: {
         color: "#414d55c4",
@@ -89,7 +87,7 @@ fetch("http://localhost:8000/metadata")
       // },
     }).addTo(map);
 
-    // Draw state boundary (red)
+    // Draw state boundary
     L.geoJSON(stateBoundary, {
       pointToLayer: () => L.layerGroup([]),
       style: {
@@ -99,13 +97,15 @@ fetch("http://localhost:8000/metadata")
       },
     }).addTo(map);
 
-    // Draw state boundary (red)
-    // L.geoJSON(villageBoundary, {
+    // L.geoJSON(lulc, {
     //   pointToLayer: () => L.layerGroup([]),
-    //   style: {
-    //     color: "#ddd5e8ff",
-    //     weight: 1,
-    //     fillOpacity: 0,
+    //   style: function (feature) {
+    //     const lulctype = feature.properties.type_id; 
+    //     return {
+    //       color: getColor(lulctype), 
+    //       weight: 2,
+    //       fillOpacity: 0.6,
+    //     };
     //   },
     // }).addTo(map);
 

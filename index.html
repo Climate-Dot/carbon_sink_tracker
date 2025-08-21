@@ -22,9 +22,10 @@
       <h2>Carbon Sink Tracker</h2>
       <label
         ><b>District:</b>
-          <!-- <select id="district"></select>  -->
+        <!-- <select id="district"></select>  -->
       </label>
-      <div id="district-checkboxes"></div> 
+      <div id="district-checkboxes"></div>
+
       <!-- <label
         >Year:
         <select id="year"></select>
@@ -52,7 +53,14 @@
           <span id="yearDisplay">2020</span>
         </div></label
       >
-      <button id="submitBtn" onclick="loadLULC()">Load</button>
+      <div class="button-row">
+        <button id="submitBtn" onclick="loadLULC()" style="width: 49%;">Load</button>
+        <button onclick="clearLULC()" style="width: 49%;  background-color: #e46872;">Clear</button>
+      </div>
+      <div class="button-row">
+        <button onclick="downloadLULC()" style="width: 100%; background-color: #76e2bb;">Download</button>
+      </div>
+
       <br />
     </div>
     <div id="map"></div>

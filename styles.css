@@ -19,7 +19,6 @@ body,
     padding: 20px 15px;
     box-shadow: 2px 0 6px rgba(0, 0, 0, 0.2);
     z-index: 1000;
-    overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -99,8 +98,28 @@ button:hover {
 #district-checkboxes {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    /* two equal-width columns */
     gap: 6px 12px;
-    /* row-gap and column-gap */
     margin-top: 6px;
+    overflow-y: auto;
 }
+
+button {
+    padding: 10px 20px;
+    /* increases height and width */
+    font-size: 16px;
+    /* larger text */
+    min-width: 100px;
+    /* makes all buttons at least same width */
+    border-radius: 6px;
+    /* rounded corners */
+    background-color: #3f51b5;
+    /* keep your blue */
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: #2c3e9d;
+    /* darker blue on hover */
+}   

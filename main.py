@@ -26,23 +26,19 @@ async def lifespan(app: FastAPI):
     # Load the shapefiles at startup
     print("Loading shapefiles...")
 
-    district_gdf = gpd.read_file("D:/ClimateDot other files/State_District_boundary/District Boundary/Gujarat_district.shp")
+    district_gdf = gpd.read_file("D:/ClimateDot/State_District_boundary/District Boundary/Gujarat_district.shp")
     district_gdf = district_gdf.to_crs(epsg=4326)
     app.state.district_boundary = json.loads(district_gdf.to_json())
-    
-    # district_name_gdf = gpd.read_file("D:/ClimateDot/State_District_boundary/District Boundary/GUJARAT_DISTRICT_HQ.shp")
-    # district_name_gdf = district_name_gdf.to_crs(epsg=4326)
-    # app.state.district_name = json.loads(district_name_gdf.to_json())
 
-    state_gdf = gpd.read_file("D:/ClimateDot other files/State_District_boundary/GUJARAT_STATE_BDY.shp")
+    state_gdf = gpd.read_file("D:/ClimateDot/State_District_boundary/GUJARAT_STATE_BDY.shp")
     state_gdf = state_gdf[state_gdf["STATE"] == "GUJARAT"]
     state_gdf = state_gdf.to_crs(epsg=4326)
     app.state.state_boundary = json.loads(state_gdf.to_json())
     
     
-    village_gdf = gpd.read_file("D:/ClimateDot other files/State_District_boundary/Village Boundary/Teritorial Circle_Village_Boundary.shp")
-    village_gdf = village_gdf.to_crs(epsg=4326)
-    app.state.village_boundary = json.loads(village_gdf.to_json())
+    # village_gdf = gpd.read_file("D:/ClimateDot/State_District_boundary/Village Boundary/Teritorial Circle_Village_Boundary.shp")
+    # village_gdf = village_gdf.to_crs(epsg=4326)
+    # app.state.village_boundary = json.loads(village_gdf.to_json())
 
     # lulc_gdf = gpd.read_file("D:/ClimateDot/output/LULC_new.shp")
     # # lulc_gdf = state_gdf[state_gdf["STATE"] == "GUJARAT"]
@@ -64,7 +60,26 @@ async def lifespan(app: FastAPI):
 
     cur.execute("SELECT DISTINCT year FROM lulc_stats ORDER BY year;")
     app.state.years = [row[0] for row in cur.fetchall()]
-
+    
+    # cur.execute("""
+    # SELECT json_build_object(
+    #     'type', 'FeatureCollection',
+    #     'features', json_agg(
+    #         json_build_object(
+    #             'type', 'Feature',
+    #             'geometry', ST_AsGeoJSON(geom)::json,
+    #             'properties', json_build_object(
+    #                 'type_id', type_id,
+    #                 'year', year
+    #             )
+    #         )
+    #     )
+    # )
+    # FROM lulc_stats
+    # WHERE year = 2020;
+    # """)
+    # app.state.lulc = cur.fetchone()[0]
+    
     cur.close()
     conn.close()
 
@@ -91,7 +106,8 @@ async def get_all_metadata():
             # "district_name": app.state.district_name,
             "state_boundary": app.state.state_boundary,
             # "lulc_vector": app.state.lulc_vector,
-            "village_boundary": app.state.village_boundary,
+            # "village_boundary": app.state.village_boundary,
+            # "lulc": app.state.lulc,
         }
     )
 
