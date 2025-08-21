@@ -66,6 +66,7 @@ fetch("http://localhost:8000/metadata")
   .then((data) => {
     const districtBoundary = data.district_boundary;
     const stateBoundary = data.state_boundary;
+    console.log("working");
     // const lulcVector = data.lulc_vector;
     // const lulc = data.lulc;
 
