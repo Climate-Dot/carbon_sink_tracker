@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 import geopandas as gpd
 import psycopg2
 import json
-import asyncio
+# import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
 # app = FastAPI()
@@ -35,10 +35,9 @@ async def lifespan(app: FastAPI):
     state_gdf = state_gdf.to_crs(epsg=4326)
     app.state.state_boundary = json.loads(state_gdf.to_json())
     
-    
-    # village_gdf = gpd.read_file("D:/ClimateDot/State_District_boundary/Village Boundary/Teritorial Circle_Village_Boundary.shp")
-    # village_gdf = village_gdf.to_crs(epsg=4326)
-    # app.state.village_boundary = json.loads(village_gdf.to_json())
+    village_gdf = gpd.read_file("D:/ClimateDot/State_District_boundary/Village Boundary/Teritorial Circle_Village_Boundary.shp")
+    village_gdf = village_gdf.to_crs(epsg=4326)
+    app.state.village_boundary = json.loads(village_gdf.to_json())
 
     # lulc_gdf = gpd.read_file("D:/ClimateDot/output/LULC_new.shp")
     # # lulc_gdf = state_gdf[state_gdf["STATE"] == "GUJARAT"]
@@ -106,7 +105,7 @@ async def get_all_metadata():
             # "district_name": app.state.district_name,
             "state_boundary": app.state.state_boundary,
             # "lulc_vector": app.state.lulc_vector,
-            # "village_boundary": app.state.village_boundary,
+            "village_boundary": app.state.village_boundary,
             # "lulc": app.state.lulc,
         }
     )
