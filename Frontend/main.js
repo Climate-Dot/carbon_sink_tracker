@@ -66,8 +66,6 @@ fetch("http://localhost:8000/metadata")
   .then((data) => {
     const districtBoundary = data.district_boundary;
     const stateBoundary = data.state_boundary;
-    // const lulcVector = data.lulc_vector;
-    // const lulc = data.lulc;
 
     const districtLayer = L.geoJSON(districtBoundary, {
       style: {
@@ -96,18 +94,6 @@ fetch("http://localhost:8000/metadata")
         fillOpacity: 0,
       },
     }).addTo(map);
-
-    // L.geoJSON(lulc, {
-    //   pointToLayer: () => L.layerGroup([]),
-    //   style: function (feature) {
-    //     const lulctype = feature.properties.type_id; 
-    //     return {
-    //       color: getColor(lulctype), 
-    //       weight: 2,
-    //       fillOpacity: 0.6,
-    //     };
-    //   },
-    // }).addTo(map);
 
     // Zoom to district layer bounds
     map.fitBounds(districtLayer.getBounds());
@@ -222,7 +208,44 @@ async function loadLULC() {
   query.append("year", year);
 
   const url = `http://127.0.0.1:8000/lulc-geojson?${query.toString()}`;
-  console.log(url);
+
+  let uniqueTypes = {};
+
+  // Add village boundaries only for selected districts
+  const metadataRes = await fetch("http://localhost:8000/metadata");
+  const metadata = await metadataRes.json();
+  const villageBoundary = metadata.village_boundary;
+
+  const selectedDistricts = getSelectedDistricts();
+
+  // Filter villages belonging to selected districts
+  const filteredVillages = {
+    type: "FeatureCollection",
+    features: villageBoundary.features.filter((f) => {
+      const districtName = f.properties?.DISTRICT || f.properties?.District;
+      return selectedDistricts.includes(districtName);
+    }),
+  };
+
+  if (villageLayer) {
+    map.removeLayer(villageLayer); // clear previous
+  }
+
+  villageLayer = L.geoJSON(filteredVillages, {
+    style: {
+      color: "#ddd5e8ff",
+      weight: 4,
+      fillOpacity: 0,
+    },
+    onEachFeature: (feature, layer) => {
+      if (feature.properties?.VILLAGE) {
+        layer.bindPopup(
+          `<b>Village:</b> ${feature.properties.VILLAGE}<br>
+         <b>District:</b> ${feature.properties.DISTRICT || "N/A"}`
+        );
+      }
+    },
+  }).addTo(map);
 
   try {
     const res = await fetch(url);
@@ -282,15 +305,34 @@ async function loadLULC() {
             color: "#333",
             weight: borderWeight,
             fillColor: getColor(lulc_type),
-            fillOpacity: 0.8,
+            fillOpacity: 0.6,
           };
         },
         onEachFeature: (feature, layer) => {
+          let villageName = "N/A";
+
+          // Find the village polygon that intersects this LULC feature
+          if (villageLayer) {
+            console.log("Checking village intersections for feature:", feature);
+            // Use turf to find the centroid of the feature
+            const centroid = turf.centroid(feature);
+            villageLayer.eachLayer((vLayer) => {
+              if (turf.booleanIntersects(centroid, vLayer.feature)) {
+                villageName = vLayer.feature.properties.Village || villageName;
+                console.log(villageName);
+              }
+            });
+          } else {
+            console.warn(
+              "Village layer not loaded yet, skipping intersection check."
+            );
+          }
+
           const props = feature.properties;
           layer.bindPopup(
             `<b>Type:</b> ${props.type_name}<br><b>Area:</b> ${
               props.area_ha?.toFixed(2) || "N/A"
-            } ha`
+            } ha<br><b>Village:</b> ${villageName}`
           );
           // layer.on({
           //   mouseover: function (e) {
@@ -314,23 +356,44 @@ async function loadLULC() {
       }
     ).addTo(map);
 
-    // Add village boundaries after LULC is drawn
+    // Add village boundaries only for selected districts
     const metadataRes = await fetch("http://localhost:8000/metadata");
     const metadata = await metadataRes.json();
     const villageBoundary = metadata.village_boundary;
 
-    villageLayer = L.geoJSON(villageBoundary, {
+    const selectedDistricts = getSelectedDistricts();
+
+    // Filter villages belonging to selected districts
+    const filteredVillages = {
+      type: "FeatureCollection",
+      features: villageBoundary.features.filter((f) => {
+        const districtName = f.properties?.DISTRICT || f.properties?.District;
+        return selectedDistricts.includes(districtName);
+      }),
+    };
+
+    if (villageLayer) {
+      map.removeLayer(villageLayer); // clear previous
+    }
+
+    villageLayer = L.geoJSON(filteredVillages, {
       style: {
         color: "#ddd5e8ff",
-        weight: 1,
+        weight: 4,
         fillOpacity: 0,
       },
       onEachFeature: (feature, layer) => {
         if (feature.properties?.VILLAGE) {
-          layer.bindPopup(`<b>Village:</b> ${feature.properties.VILLAGE}`);
+          layer.bindPopup(
+            `<b>Village:</b> ${feature.properties.VILLAGE}<br>
+         <b>District:</b> ${feature.properties.DISTRICT || "N/A"}`
+          );
         }
       },
     }).addTo(map);
+
+    // Force LULC on top
+    currentLayer.bringToFront();
 
     map.fitBounds(currentLayer.getBounds());
 
@@ -396,6 +459,78 @@ yearSlider.addEventListener("change", () => {
   yearDisplay.textContent = yearSlider.value;
   loadLULC();
 });
+
+function clearLULC() {
+  // clear the year and reset the year slider to 2020
+  const yearSlider = document.getElementById("yearSlider");
+  const yearDisplay = document.getElementById("yearDisplay");
+  yearSlider.value = 2020;
+  yearDisplay.textContent = 2020;
+
+  // Clear district checkboxes
+  let checkboxes = document.querySelectorAll("input[name='district']");
+  checkboxes.forEach((cb) => (cb.checked = false));
+
+  // Remove current LULC layer if exists
+  if (currentLayer) {
+    map.removeLayer(currentLayer);
+    currentLayer = null;
+  }
+
+  // Remove village layer if exists
+  if (villageLayer) {
+    map.removeLayer(villageLayer);
+    villageLayer = null;
+  }
+
+  // Remove legend if exists
+  if (legend) {
+    map.removeControl(legend);
+    legend = null;
+  }
+
+  console.log("Cleared year, districts, layers, and legend");
+}
+
+function downloadLULC() {
+  if (!currentLayer) {
+    alert("No LULC data to download. Please load the map first.");
+    return;
+  }
+
+  // Extract features from current LULC layer
+  const features = [];
+  currentLayer.eachLayer((layer) => {
+    if (layer.feature && layer.feature.properties) {
+      const props = layer.feature.properties;
+      features.push({
+        district: props.district || props.DISTRICT || "N/A",
+        lulc_type: props.type_name || "Unknown",
+        area: props.area_ha ? props.area_ha.toFixed(2) : "N/A",
+      });
+    }
+  });
+
+  if (features.length === 0) {
+    alert("No feature data found to export.");
+    return;
+  }
+
+  // Convert to CSV
+  const headers = ["District", "LULC Type", "Area (ha)"];
+  const rows = features.map((f) => [f.district, f.lulc_type, f.area].join(","));
+  const csvContent = [headers.join(","), ...rows].join("\n");
+
+  // Create and trigger download
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "lulc_data.csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
 
 // Populate dropdowns when page loads
 window.onload = () => {
