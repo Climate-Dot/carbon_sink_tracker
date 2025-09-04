@@ -1,288 +1,287 @@
-from fastapi import FastAPI, Query
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from contextlib import asynccontextmanager
-import geopandas as gpd
-import psycopg2
-import json
-# import asyncio
-from concurrent.futures import ThreadPoolExecutor
+# ==========================
+# Standard Library Imports
+# ==========================
+from concurrent.futures import ThreadPoolExecutor  # For running background tasks
+from contextlib import asynccontextmanager          # For FastAPI lifespan management
+import json                                        # For working with JSON data
+import os                                          # For environment variables and paths
+import time                                        # For performance measurement / debugging
 
-# app = FastAPI()
-executor = ThreadPoolExecutor()
+# ==========================
+# Third-Party Imports
+# ==========================
+from dotenv import load_dotenv                     # For loading environment variables from .env file
+from fastapi import FastAPI, Query, HTTPException  # FastAPI core and request handling
+from fastapi.middleware.cors import CORSMiddleware # Middleware to allow cross-origin requests
+from fastapi.responses import JSONResponse         # For structured API responses
+import geopandas as gpd                            # For working with geospatial data (shapefiles, GeoDataFrames)
+import pyodbc                                      # For SQL Server database connection
+from shapely import wkt                            # For parsing WKT geometries
+from shapely.geometry import mapping               # For converting geometries to GeoJSON
+# ==========================V
 
+# ==========================
+# FastAPI App & Executor
+# ==========================
+executor = ThreadPoolExecutor()       # Thread pool for background tasks
+
+print("Starting up...")
+
+# ==========================
+# Load Environment Variables
+# ==========================
+load_dotenv("D:/ClimateDot/CarbonSink/Backend/credentials.env")
+
+DB_NAME = os.getenv("DB_NAME")
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+DB_HOST = os.getenv("DB_HOST")
+DB_PORT = os.getenv("DB_PORT")
+
+
+# ==========================
+# Database Connection Helper
+# ==========================
 def get_connection():
-    return psycopg2.connect(
-            dbname="postgres",
-            user="postgres",
-            password="1234",
-            host="localhost",
-            port="5432"
+    """
+    Create and return a SQL Server database connection using pyodbc.
+    Uses credentials from environment variables.
+    """
+    conn_str = (
+        f"DRIVER={{ODBC Driver 18 for SQL Server}};"
+        f"SERVER={DB_HOST},{DB_PORT};"
+        f"DATABASE={DB_NAME};"
+        f"UID={DB_USER};"
+        f"PWD={DB_PASSWORD};"
+        "TrustServerCertificate=Yes;"
     )
+    return pyodbc.connect(conn_str)
 
-# Create a lifespan context for startup logic
+
+# ==========================
+# Geometry Conversion Helper
+# ==========================
+def safe_geom_wkt_to_geojson(geom_wkt):
+    """
+    Convert WKT geometry to GeoJSON format.
+
+    Args:
+        geom_wkt (str): Well-Known Text (WKT) representation of a geometry.
+
+    Returns:
+        dict | None: GeoJSON geometry dict if valid, otherwise None.
+    """
+    if not geom_wkt:
+        return None
+
+    try:
+        geom = wkt.loads(geom_wkt)  # Parse WKT → Shapely geometry
+        return mapping(geom)        # Convert Shapely → GeoJSON
+    except Exception as e:
+        print(f"Invalid geometry skipped: {e}")
+        return None
+
+# ==========================
+# Lifespan Context for Startup
+# ==========================
+import asyncio
+import time
+import json
+from fastapi import FastAPI
+from contextlib import asynccontextmanager
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Load the shapefiles at startup
-    print("Loading shapefiles...")
+    print("Starting app...")
 
-    district_gdf = gpd.read_file("D:/ClimateDot/State_District_boundary/District Boundary/Gujarat_district.shp")
-    district_gdf = district_gdf.to_crs(epsg=4326)
-    app.state.district_boundary = json.loads(district_gdf.to_json())
+    # Load small files synchronously
+    start_time = time.time()
+    with open("cache_state_boundary.geojson") as f:
+        app.state.state_boundary = json.load(f)
 
-    state_gdf = gpd.read_file("D:/ClimateDot/State_District_boundary/GUJARAT_STATE_BDY.shp")
-    state_gdf = state_gdf[state_gdf["STATE"] == "GUJARAT"]
-    state_gdf = state_gdf.to_crs(epsg=4326)
-    app.state.state_boundary = json.loads(state_gdf.to_json())
-    
-    village_gdf = gpd.read_file("D:/ClimateDot/State_District_boundary/Village Boundary/Teritorial Circle_Village_Boundary.shp")
-    village_gdf = village_gdf.to_crs(epsg=4326)
-    app.state.village_boundary = json.loads(village_gdf.to_json())
+    with open("cache_district_boundary.geojson") as f:
+        app.state.district_boundary = json.load(f)
 
-    # lulc_gdf = gpd.read_file("D:/ClimateDot/output/LULC_new.shp")
-    # # lulc_gdf = state_gdf[state_gdf["STATE"] == "GUJARAT"]
-    # lulc_gdf = lulc_gdf.to_crs(epsg=4326)
-    # app.state.lulc_vector = json.loads(lulc_gdf.to_json())
+    with open("cache_districts.json") as f:
+        app.state.districts = json.load(f)
 
-    # Load GeoJSON vector file (LULC)
-    # lulc_gdf = gpd.read_file("C:/Users/Simran Singh/Downloads/LULC_Vector_AHMADABAD.geojson")
-    # lulc_gdf = lulc_gdf.to_crs(epsg=4326)  # ensure correct CRS
-    # app.state.lulc_vector = json.loads(lulc_gdf.to_json())
+    elapsed = time.time() - start_time
+    print(f"✅ State & district metadata loaded in {elapsed:.2f} seconds")
 
-    print("Shapefiles loaded.")
-    # Fetch distinct districts and years
-    conn = get_connection()
-    cur = conn.cursor()
+    # Load heavy files (village boundary & LULC) in background
+    async def load_heavy_files():
+        print("Loading heavy files in background...")
 
-    cur.execute("SELECT DISTINCT name FROM district_boundaries ORDER BY name;")
-    app.state.districts = [row[0] for row in cur.fetchall()]
+        t0 = time.time()
+        with open("cache_village_boundary.geojson") as f:
+            app.state.village_boundary = json.load(f)
+        print(f"✅ Village boundaries loaded in {time.time()-t0:.2f} seconds")
 
-    cur.execute("SELECT DISTINCT year FROM lulc_stats ORDER BY year;")
-    app.state.years = [row[0] for row in cur.fetchall()]
-    
-    # cur.execute("""
-    # SELECT json_build_object(
-    #     'type', 'FeatureCollection',
-    #     'features', json_agg(
-    #         json_build_object(
-    #             'type', 'Feature',
-    #             'geometry', ST_AsGeoJSON(geom)::json,
-    #             'properties', json_build_object(
-    #                 'type_id', type_id,
-    #                 'year', year
-    #             )
-    #         )
-    #     )
-    # )
-    # FROM lulc_stats
-    # WHERE year = 2020;
-    # """)
-    # app.state.lulc = cur.fetchone()[0]
-    
-    cur.close()
-    conn.close()
+        t1 = time.time()
+        with open("cache_lulc_2020.geojson") as f:
+            app.state.lulc_2020 = json.load(f)
+        print(f"✅ Gujarat LULC 2020 loaded in {time.time()-t1:.2f} seconds")
+
+    # Start background task
+    asyncio.create_task(load_heavy_files())
 
     yield  # Startup complete
-    # You could add cleanup logic here on shutdown if needed
+    print("Shutting down...")
 
-# Instantiate the app with lifespan
+# -------------------------------------------------------------------
+# Instantiate the FastAPI app with lifespan
+# -------------------------------------------------------------------
 app = FastAPI(lifespan=lifespan)
 
-# Allow frontend access
+# Enable CORS (allow frontend access)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],        # Allow all origins (can restrict later)
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],        # Allow all HTTP methods
+    allow_headers=["*"],        # Allow all headers
 )
 
+# -------------------------------------------------------------------
+# API Routes
+# -------------------------------------------------------------------
 @app.get("/metadata")
 async def get_all_metadata():
+    """
+    Endpoint: /metadata
+    Returns available metadata including boundaries.
+    """
     return JSONResponse(
         content={
             "district_boundary": app.state.district_boundary,
-            # "district_name": app.state.district_name,
             "state_boundary": app.state.state_boundary,
-            # "lulc_vector": app.state.lulc_vector,
-            "village_boundary": app.state.village_boundary,
-            # "lulc": app.state.lulc,
         }
     )
 
+@app.get("/lulc-preview")
+def get_lulc_preview():
+    """
+    Endpoint: /lulc-preview
+    Returns preview of Land Use Land Cover (LULC) data for 2020.
+    """
+    return JSONResponse(content=app.state.lulc_2020)
+
+
 @app.get("/districts")
 async def get_districts():
+    """
+    Endpoint: /districts
+    Returns a list of all districts.
+    """
     return JSONResponse(content=app.state.districts)
+
 
 @app.get("/years")
 async def get_years():
+    """
+    Endpoint: /years
+    Returns available years for data visualization.
+    """
     return JSONResponse(content=app.state.years)
 
-
-
-# @app.get("/lulc-geojson")
-# def get_lulc(district: str = Query(None), year: int = Query(None)):
-#     conn = get_connection()
-#     cur = conn.cursor()
-
-#     query = """
-#         SELECT jsonb_build_object(
-#             'type', 'FeatureCollection',
-#             'features', jsonb_agg(
-#                 jsonb_build_object(
-#                     'type', 'Feature',
-#                     'geometry', ST_AsGeoJSON(geom)::jsonb,
-#                     'properties', to_jsonb(lulc_stats) - 'geom'
-#                 )
-#             )
-#         )
-#         FROM lulc_stats
-#         WHERE (%s IS NULL OR district_name = %s)
-#           AND (%s IS NULL OR year = %s);
-#     """
-#     cur.execute(query, (district, district, year, year))
-#     geojson = cur.fetchone()[0]
-
-#     cur.close()
-#     conn.close()
-
-#     return JSONResponse(content=geojson)
-
 @app.get("/lulc-geojson")
-def get_lulc(district: list[str] = Query(...), year: int = Query(...)):
-    conn = get_connection()
-    cur = conn.cursor()
+def get_lulc(district_id: list[str] = Query(...), year: int = Query(...)):
+    print(f"Received: district_id={district_id}, year={year}")
+    
+    conn = None
+    cursor = None
+    try:
+        conn = get_connection()
+        if not conn:
+            raise Exception("Failed to establish database connection.")
+        cursor = conn.cursor()
 
-    query = """
-        SELECT jsonb_build_object(
-            'type', 'FeatureCollection',
-            'features', jsonb_agg(
-                jsonb_build_object(
-                    'type', 'Feature',
-                    'geometry', ST_AsGeoJSON(geom)::jsonb,
-                    'properties', to_jsonb(lulc_stats) - 'geom'
-                )
-            )
-        )
-        FROM lulc_stats
-        WHERE (%s IS NULL OR district_name = ANY(%s))
-          AND (%s IS NULL OR year = %s);
-    """
+        # Dynamically build the WHERE clause based on the number of districts
+        if len(district_id) == 1:
+            query = """
+                SELECT 
+                    district_id,
+                    year,
+                    type_id, 
+                    area,
+                    geometry.STAsText() AS geometry
+                FROM fact_lulc_stats
+                WHERE district_id = ?
+                AND year = ?
+            """
+            params = [district_id[0], year]
+        else:
+            placeholders = ",".join("?" * len(district_id))
+            query = f"""
+                SELECT 
+                    district_id,
+                    year,
+                    type_id, 
+                    area,
+                    geometry.STAsText() AS geometry
+                FROM fact_lulc_stats
+                WHERE district_id IN ({placeholders})
+                AND year = ?
+            """
+            params = district_id + [year]
 
-    cur.execute(query, (district if district else None, district, year if year else None, year))
-    geojson = cur.fetchone()[0]
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
 
-    cur.close()
-    conn.close()
+        # Build GeoJSON
+        features = []
+        columns = [col[0] for col in cursor.description]
 
-    return JSONResponse(content=geojson or {"type": "FeatureCollection", "features": []})
+        for row in rows:
+            row_dict = dict(zip(columns, row))
+            wkt_geom = row_dict.pop("geometry")
 
-# @app.get("/districts")
-# def get_districts():
-#     conn = get_connection()
-#     cur = conn.cursor()
+            # Convert WKT → GeoJSON dict
+            geom = wkt.loads(wkt_geom) if wkt_geom else None
+            geometry = mapping(geom) if geom else None
 
-#     cur.execute("SELECT DISTINCT district_name FROM lulc_stats ORDER BY district_name;")
-#     rows = cur.fetchall()
-
-#     cur.close()
-#     conn.close()
-
-#     return [row[0] for row in rows]
-
-
-# @app.get("/years")
-# def get_years():
-#     conn = get_connection()
-#     cur = conn.cursor()
-
-#     cur.execute("SELECT DISTINCT year FROM lulc_stats ORDER BY year;")
-#     rows = cur.fetchall()
-
-#     cur.close()
-#     conn.close()
-
-#     return [row[0] for row in rows]
-
-@app.get("/gujarat-boundaries/")
-def get_gujarat_boundaries():
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    sql = """
-    SELECT 
-        district_name, 
-        ST_AsGeoJSON(geometry) 
-    FROM gujarat_districts
-    """
-
-    cursor.execute(sql)
-    rows = cursor.fetchall()
-    cursor.close()
-    conn.close()
-
-    features = []
-    for district_name, geom_json in rows:
-        if geom_json:
-            features.append({
+            feature = {
                 "type": "Feature",
-                "geometry": json.loads(geom_json),
-                "properties": {"district_name": district_name}
-            })
+                "geometry": geometry,
+                "properties": row_dict,
+            }
+            features.append(feature)
 
-    return {
-        "type": "FeatureCollection",
-        "features": features
-    }
+        geojson = {"type": "FeatureCollection", "features": features}
+        return geojson
 
-# @app.get("/gujarat-district-boundary")
-# def get_gujarat_boundary():
-#     gdf = gpd.read_file("C:/Users/Simran Singh/Downloads/gadm41_IND_shp/gadm41_IND_2.shp")
-#      # Filter for Gujarat
-#     gdf = gdf[gdf["NAME_1"] == "Gujarat"]
-#     gdf = gdf.to_crs(epsg=4326) 
-#     # geojson = gdf.to_json()
-#     # return JSONResponse(content=geojson)
-#     geojson = json.loads(gdf.to_json())
-#     return JSONResponse(content=geojson)
+    except Exception as e:
+        print(f"Database error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Internal Server Error: Failed to process your request.",
+        )
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+            
+@app.get("/lulc-types")
+def get_lulc_types(type_id: list[int] = Query(...)):
+    conn = None
+    cursor = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
 
+        placeholders = ",".join("?" * len(type_id))
+        query = f"""
+            SELECT id, typename
+            FROM type
+            WHERE id IN ({placeholders})
+        """
+        cursor.execute(query, type_id)
+        rows = cursor.fetchall()
 
-# @app.get("/district-lulc/")
-# def get_district_lulc(district_name: str = Query(..., description="Name of the district")):
-#     conn = get_connection()
-#     cursor = conn.cursor()
+        mapping = {row[0]: row[1] for row in rows}
+        return mapping  # {1: "Built-up", 2: "Forest", ...}
 
-#     sql = """
-#     SELECT 
-#         l.lulc_class,
-#         ST_AsGeoJSON(ST_Intersection(d.geom, l.geom)) AS geometry
-#     FROM 
-#         gujarat_districts d
-#     JOIN 
-#         lulc_data l
-#     ON 
-#         ST_Intersects(d.geom, l.geom)
-#     WHERE 
-#         d.district_name = %s
-#     """
-
-#     cursor.execute(sql, (district_name,))
-#     rows = cursor.fetchall()
-
-#     features = []
-#     for row in rows:
-#         lulc_class, geometry = row
-#         if geometry:
-#             features.append({
-#                 "type": "Feature",
-#                 "geometry": json.loads(geometry),
-#                 "properties": {"lulc_class": lulc_class}
-#             })
-
-#     cursor.close()
-#     conn.close()
-
-#     return {
-#         "type": "FeatureCollection",
-#         "features": features
-#     }
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
