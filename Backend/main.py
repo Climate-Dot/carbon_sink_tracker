@@ -200,35 +200,6 @@ async def lifespan(app: FastAPI):
 
         except Exception as e:
             print("❌ Error loading LULC:", e)
-
-        # print("🗺️ Loading Gujarat LULC (2022) from DB...")
-
-        # cur.execute("""
-        #     SELECT district_id, year, type_id, geometry.STAsText() AS wkt_geometry
-        #     FROM fact_lulc_stats
-        #     WHERE year = 2022
-        # """)
-        # rows = cur.fetchall()
-        # columns = [col[0] for col in cur.description]
-
-        # features = []
-        # for i, row in enumerate(rows, start=1):
-        #     row_dict = dict(zip(columns, row))
-        #     wkt_geom = row_dict.pop("wkt_geometry")
-        #     geom = wkt.loads(wkt_geom).simplify(100.0, preserve_topology=True) if wkt_geom else None
-        #     features.append({
-        #         "type": "Feature",
-        #         "geometry": mapping(geom) if geom else None,
-        #         "properties": row_dict
-        #     })
-        #     if i % 500 == 0:
-        #         print(f"   Processed {i}/{len(rows)} LULC geometries...")
-
-        # # Store directly in memory
-        # app.state.lulc_2020 = {"type": "FeatureCollection", "features": features}
-
-        # print(f"✅ Gujarat LULC (2022) loaded in memory: {len(features)} features.")
-        print(f"   Loaded in {time.time()-t1:.2f} seconds")
         # with open("cache_lulc_2020.geojson") as f:
         #     app.state.lulc_2020 = json.load(f)
         # print(f"✅ Gujarat LULC 2020 loaded in {time.time()-t1:.2f} seconds")
