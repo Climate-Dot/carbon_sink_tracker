@@ -43,31 +43,30 @@ DB_PORT = os.getenv("DB_PORT")
 # ==========================
 # Database Connection Helper
 # ==========================
-# def get_connection():
-#     """
-#     Create and return a SQL Server database connection using pyodbc.
-#     Uses credentials from environment variables.
-#     """
-#     conn_str = (
-#         f"DRIVER={{ODBC Driver 18 for SQL Server}};"
-#         f"SERVER={DB_HOST},{DB_PORT};"
-#         f"DATABASE={DB_NAME};"
-#         f"UID={DB_USER};"
-#         f"PWD={DB_PASSWORD};"
-#         "TrustServerCertificate=Yes;"
-#     )
-#     return pyodbc.connect(conn_str)
-
 def get_connection():
-    return pymssql.connect(
-        server=DB_HOST,
-        port=DB_PORT,
-        user=DB_USER,
-        password=DB_PASSWORD,
-        database=DB_NAME,
-        tds_version='8.0',  # optional
+    """
+    Create and return a SQL Server database connection using pyodbc.
+    Uses credentials from environment variables.
+    """
+    conn_str = (
+        f"DRIVER={{ODBC Driver 18 for SQL Server}};"
+        f"SERVER={DB_HOST},{DB_PORT};"
+        f"DATABASE={DB_NAME};"
+        f"UID={DB_USER};"
+        f"PWD={DB_PASSWORD};"
+        "TrustServerCertificate=Yes;"
     )
+    return pyodbc.connect(conn_str)
 
+# def get_connection():
+#     return pymssql.connect(
+#         server=DB_HOST,
+#         port=DB_PORT,
+#         user=DB_USER,
+#         password=DB_PASSWORD,
+#         database=DB_NAME,
+#         tds_version='8.0',  # optional
+#     )
 
 # ==========================
 # Geometry Conversion Helper
@@ -300,17 +299,29 @@ def get_lulc(district_id: list[str] = Query(...), year: int = Query(...)):
         # Dynamically build the WHERE clause based on the number of districts
         if len(district_id) == 1:
             query = """
-                SELECT district_id, year, type_id, area, geometry.STAsText() AS geometry
+                SELECT 
+                    district_id,
+                    year,
+                    type_id, 
+                    area,
+                    geometry.STAsText() AS geometry
                 FROM fact_lulc_stats
-                WHERE district_id = %s AND year = %s
+                WHERE district_id = ?
+                AND year = ?
             """
             params = [district_id[0], year]
         else:
-            placeholders = ",".join("%s" for _ in district_id)
+            placeholders = ",".join("?" * len(district_id))
             query = f"""
-                SELECT district_id, year, type_id, area, geometry.STAsText() AS geometry
+                SELECT 
+                    district_id,
+                    year,
+                    type_id, 
+                    area,
+                    geometry.STAsText() AS geometry
                 FROM fact_lulc_stats
-                WHERE district_id IN ({placeholders}) AND year = %s
+                WHERE district_id IN ({placeholders})
+                AND year = ?
             """
             params = district_id + [year]
 
@@ -359,7 +370,7 @@ def get_lulc_types(type_id: list[int] = Query(...)):
         conn = get_connection()
         cursor = conn.cursor()
 
-        placeholders = ",".join("%" * len(type_id))
+        placeholders = ",".join("?" * len(type_id))
         query = f"""
             SELECT id, typename
             FROM type
