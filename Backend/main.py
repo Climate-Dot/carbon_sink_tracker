@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware # Middleware to allow cross-o
 from fastapi.responses import JSONResponse         # For structured API responses
 import geopandas as gpd                            # For working with geospatial data (shapefiles, GeoDataFrames)
 import pyodbc                                      # For SQL Server database connection
+import pymssql
 from shapely import wkt, wkb                        # For parsing WKT geometries
 from shapely.geometry import mapping, shape              # For converting geometries to GeoJSON
 # ==========================V
@@ -42,20 +43,30 @@ DB_PORT = os.getenv("DB_PORT")
 # ==========================
 # Database Connection Helper
 # ==========================
+# def get_connection():
+#     """
+#     Create and return a SQL Server database connection using pyodbc.
+#     Uses credentials from environment variables.
+#     """
+#     conn_str = (
+#         f"DRIVER={{ODBC Driver 18 for SQL Server}};"
+#         f"SERVER={DB_HOST},{DB_PORT};"
+#         f"DATABASE={DB_NAME};"
+#         f"UID={DB_USER};"
+#         f"PWD={DB_PASSWORD};"
+#         "TrustServerCertificate=Yes;"
+#     )
+#     return pyodbc.connect(conn_str)
+
 def get_connection():
-    """
-    Create and return a SQL Server database connection using pyodbc.
-    Uses credentials from environment variables.
-    """
-    conn_str = (
-        f"DRIVER={{ODBC Driver 18 for SQL Server}};"
-        f"SERVER={DB_HOST},{DB_PORT};"
-        f"DATABASE={DB_NAME};"
-        f"UID={DB_USER};"
-        f"PWD={DB_PASSWORD};"
-        "TrustServerCertificate=Yes;"
+    return pymssql.connect(
+        server=DB_HOST,
+        port=DB_PORT,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        database=DB_NAME,
+        tds_version='8.0',  # optional
     )
-    return pyodbc.connect(conn_str)
 
 
 # ==========================
@@ -184,11 +195,19 @@ async def lifespan(app: FastAPI):
 
             features = []
             for row in cur.fetchall():
-                geom = wkb.loads(row.geom_bin)  # WKB → Shapely geometry
+                # geom = wkb.loads(row.geom_bin)  # WKB → Shapely geometry
+                # features.append({
+                #     "type": "Feature",
+                #     "geometry": geom.__geo_interface__,  # Shapely → GeoJSON dict
+                #     "properties": {"lulc_type": row.type_id}
+                # })
+                geom_bin = row[0]   # geometry.STAsBinary()
+                type_id = row[3]    # type_id
+                geom = wkb.loads(geom_bin)
                 features.append({
                     "type": "Feature",
-                    "geometry": geom.__geo_interface__,  # Shapely → GeoJSON dict
-                    "properties": {"lulc_type": row.type_id}
+                    "geometry": geom.__geo_interface__,
+                    "properties": {"lulc_type": type_id}
                 })
 
             app.state.lulc_2020 = {
@@ -281,29 +300,17 @@ def get_lulc(district_id: list[str] = Query(...), year: int = Query(...)):
         # Dynamically build the WHERE clause based on the number of districts
         if len(district_id) == 1:
             query = """
-                SELECT 
-                    district_id,
-                    year,
-                    type_id, 
-                    area,
-                    geometry.STAsText() AS geometry
+                SELECT district_id, year, type_id, area, geometry.STAsText() AS geometry
                 FROM fact_lulc_stats
-                WHERE district_id = ?
-                AND year = ?
+                WHERE district_id = %s AND year = %s
             """
             params = [district_id[0], year]
         else:
-            placeholders = ",".join("?" * len(district_id))
+            placeholders = ",".join("%s" for _ in district_id)
             query = f"""
-                SELECT 
-                    district_id,
-                    year,
-                    type_id, 
-                    area,
-                    geometry.STAsText() AS geometry
+                SELECT district_id, year, type_id, area, geometry.STAsText() AS geometry
                 FROM fact_lulc_stats
-                WHERE district_id IN ({placeholders})
-                AND year = ?
+                WHERE district_id IN ({placeholders}) AND year = %s
             """
             params = district_id + [year]
 
@@ -352,7 +359,7 @@ def get_lulc_types(type_id: list[int] = Query(...)):
         conn = get_connection()
         cursor = conn.cursor()
 
-        placeholders = ",".join("?" * len(type_id))
+        placeholders = ",".join("%" * len(type_id))
         query = f"""
             SELECT id, typename
             FROM type
