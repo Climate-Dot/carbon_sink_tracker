@@ -16,7 +16,6 @@ from fastapi.middleware.cors import CORSMiddleware # Middleware to allow cross-o
 from fastapi.responses import JSONResponse         # For structured API responses
 import geopandas as gpd                            # For working with geospatial data (shapefiles, GeoDataFrames)
 import pyodbc                                      # For SQL Server database connection
-import pymssql
 from shapely import wkt, wkb                        # For parsing WKT geometries
 from shapely.geometry import mapping, shape              # For converting geometries to GeoJSON
 # ==========================V
