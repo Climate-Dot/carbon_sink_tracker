@@ -30,14 +30,14 @@ def get_connection():
 
 
 # ---- Village boundary ----
-print("📍 Loading village boundary shapefile...")
-village_gdf = gpd.read_file(
-    "D:/ClimateDot/State_District_boundary/Village Boundary/Teritorial Circle_Village_Boundary.shp"
-)
-village_gdf = village_gdf.to_crs(epsg=4326)
-with open("cache_village_boundary.geojson", "w") as f:
-    json.dump(json.loads(village_gdf.to_json()), f)
-print("✅ Village boundary cached.")
+# print("📍 Loading village boundary shapefile...")
+# village_gdf = gpd.read_file(
+#     "D:/ClimateDot/State_District_boundary/Village Boundary/Teritorial Circle_Village_Boundary.shp"
+# )
+# village_gdf = village_gdf.to_crs(epsg=4326)
+# with open("cache_village_boundary.geojson", "w") as f:
+#     json.dump(json.loads(village_gdf.to_json()), f)
+# print("✅ Village boundary cached.")
 
 # ---- State + District from DB ----
 print("🔗 Connecting to database...")

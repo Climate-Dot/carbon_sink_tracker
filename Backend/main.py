@@ -113,9 +113,9 @@ async def lifespan(app: FastAPI):
         print("Loading heavy files in background...")
 
         t0 = time.time()
-        with open("cache_village_boundary.geojson") as f:
-            app.state.village_boundary = json.load(f)
-        print(f"✅ Village boundaries loaded in {time.time()-t0:.2f} seconds")
+        # with open("cache_village_boundary.geojson") as f:
+        #     app.state.village_boundary = json.load(f)
+        # print(f"✅ Village boundaries loaded in {time.time()-t0:.2f} seconds")
 
         t1 = time.time()
         with open("cache_lulc_2020.geojson") as f:
