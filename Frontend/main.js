@@ -149,7 +149,7 @@ function loadLULC_State() {
       // Add LULC to map and assign to global variable
       lulcLayerState = L.geoJSON(lulc2020, {
         style: (feature) => ({
-          color: getColor(feature.properties.type_id),
+          color: getColor(feature.properties.lulc_type),
           weight: 0.5,
           fillOpacity: 0, // transparent fill for preview
         }),
