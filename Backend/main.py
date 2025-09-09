@@ -181,27 +181,32 @@ async def lifespan(app: FastAPI):
             print("🗺️ Loading Gujarat LULC (2022) from DB...")
             cur.execute("""
                 SELECT 
-                    geometry.STAsBinary() AS geom_bin, 
+                    geometry.STAsText() AS geom_wkt, 
                     district_id, year, type_id
                 FROM fact_lulc_stats WHERE year = 2022
             """)
 
             features = []
-            for row in cur.fetchall():
-                # geom = wkb.loads(row.geom_bin)  # WKB → Shapely geometry
-                # features.append({
-                #     "type": "Feature",
-                #     "geometry": geom.__geo_interface__,  # Shapely → GeoJSON dict
-                #     "properties": {"lulc_type": row.type_id}
-                # })
-                geom_bin = row[0]   # geometry.STAsBinary()
-                type_id = row[3]    # type_id
-                geom = wkb.loads(geom_bin)
-                features.append({
-                    "type": "Feature",
-                    "geometry": geom.__geo_interface__,
-                    "properties": {"lulc_type": type_id}
-                })
+            for i, row in enumerate(cur.fetchall()):
+                try:
+                    geom_wkt = row[0]   # geometry.STAsText()
+                    type_id = row[3]    # type_id
+                    
+                    if geom_wkt and geom_wkt.strip():
+                        geom = wkt.loads(geom_wkt)
+                        if geom and not geom.is_empty:
+                            features.append({
+                                "type": "Feature",
+                                "geometry": mapping(geom),
+                                "properties": {"lulc_type": type_id}
+                            })
+                        else:
+                            print(f"Warning: Empty geometry at row {i}")
+                    else:
+                        print(f"Warning: Null or empty WKT at row {i}")
+                except Exception as e:
+                    print(f"Error processing geometry at row {i}: {e}")
+                    continue
 
             app.state.lulc_2022 = {
                 "type": "FeatureCollection",
@@ -209,6 +214,15 @@ async def lifespan(app: FastAPI):
             }
 
             print(f"✅ Gujarat LULC loaded in memory: {len(features)} features.")
+            
+            # Validate JSON serialization
+            try:
+                json.dumps(app.state.lulc_2022)
+                print("✅ LULC data is valid JSON")
+            except Exception as json_error:
+                print(f"❌ JSON validation failed: {json_error}")
+                # Reset to empty collection if JSON is invalid
+                app.state.lulc_2022 = {"type": "FeatureCollection", "features": []}
 
         except Exception as e:
             print("❌ Error loading LULC:", e)
@@ -274,7 +288,25 @@ def get_lulc_preview():
     Endpoint: /lulc-preview
     Returns preview of Land Use Land Cover (LULC) data for 2022.
     """
-    return JSONResponse(content=app.state.lulc_2022)
+    try:
+        # Ensure we have valid data
+        if not hasattr(app.state, 'lulc_2022') or not app.state.lulc_2022:
+            return JSONResponse(content={"type": "FeatureCollection", "features": []})
+        
+        # Validate the GeoJSON structure
+        if not isinstance(app.state.lulc_2022, dict):
+            return JSONResponse(content={"type": "FeatureCollection", "features": []})
+        
+        if "type" not in app.state.lulc_2022 or app.state.lulc_2022["type"] != "FeatureCollection":
+            return JSONResponse(content={"type": "FeatureCollection", "features": []})
+        
+        if "features" not in app.state.lulc_2022 or not isinstance(app.state.lulc_2022["features"], list):
+            return JSONResponse(content={"type": "FeatureCollection", "features": []})
+        
+        return JSONResponse(content=app.state.lulc_2022)
+    except Exception as e:
+        print(f"Error in lulc-preview endpoint: {e}")
+        return JSONResponse(content={"type": "FeatureCollection", "features": []})
 
 
 @app.get("/districts")

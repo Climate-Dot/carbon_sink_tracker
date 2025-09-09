@@ -156,22 +156,48 @@ function loadLULC_State() {
   }
 
   fetch(`${API_BASE}/lulc-preview`)
-    .then((res) => res.json())
-    .then((lulcPreview) => {
-      // Add LULC to map and assign to global variable
-      lulcLayerState = L.geoJSON(lulcPreview, {
-        style: (feature) => ({
-          color: getColor(feature.properties.lulc_type),
-          weight: 0.5,
-          fillOpacity: 0, // transparent fill for preview
-        }),
-      }).addTo(map);
-      console.log("✅ State LULC loaded");
-      console.log(
-        "Map loaded in",
-        (new Date().getTime() - st) / 1000,
-        "seconds"
-      );
+    .then((res) => {
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      return res.text(); // Get as text first to debug JSON issues
+    })
+    .then((text) => {
+      try {
+        const lulcPreview = JSON.parse(text);
+        
+        // Validate the GeoJSON structure
+        if (!lulcPreview || typeof lulcPreview !== 'object') {
+          throw new Error('Invalid JSON response');
+        }
+        
+        if (!lulcPreview.type || lulcPreview.type !== 'FeatureCollection') {
+          throw new Error('Invalid GeoJSON: missing or invalid type');
+        }
+        
+        if (!Array.isArray(lulcPreview.features)) {
+          throw new Error('Invalid GeoJSON: features is not an array');
+        }
+        
+        // Add LULC to map and assign to global variable
+        lulcLayerState = L.geoJSON(lulcPreview, {
+          style: (feature) => ({
+            color: getColor(feature.properties.lulc_type),
+            weight: 0.5,
+            fillOpacity: 0, // transparent fill for preview
+          }),
+        }).addTo(map);
+        console.log("✅ State LULC loaded");
+        console.log(
+          "Map loaded in",
+          (new Date().getTime() - st) / 1000,
+          "seconds"
+        );
+      } catch (parseError) {
+        console.error("JSON parsing error:", parseError);
+        console.error("Response text (first 500 chars):", text.substring(0, 500));
+        throw new Error(`JSON parsing failed: ${parseError.message}`);
+      }
     })
     .catch((err) => console.error("Failed to load LULC:", err));
 }
