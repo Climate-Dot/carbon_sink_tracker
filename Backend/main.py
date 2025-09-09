@@ -53,7 +53,9 @@ def get_connection():
         f"DATABASE={DB_NAME};"
         f"UID={DB_USER};"
         f"PWD={DB_PASSWORD};"
-        "TrustServerCertificate=Yes;"
+        "Encrypt=YES;"
+        "TrustServerCertificate=NO;"
+        "Connection Timeout=90;"
     )
     return pyodbc.connect(conn_str)
 
