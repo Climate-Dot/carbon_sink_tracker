@@ -1,5 +1,8 @@
 const map = L.map("map").setView([22.5, 72.5], 9); // Gujarat center
 
+// Configurable API base URL: set window.API_BASE in production (e.g., Render)
+const API_BASE = window.API_BASE || "http://localhost:8000";
+
 // Add OSM base layer
 L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
   attribution:
@@ -65,7 +68,7 @@ async function populateDistrictCheckboxes() {
   const districtContainer = document.getElementById("district-checkboxes");
 
   try {
-    const districtRes = await fetch("http://127.0.0.1:8000/districts");
+    const districtRes = await fetch(`${API_BASE}/districts`);
     const districts = await districtRes.json();
 
     // Clear previous content
@@ -100,7 +103,7 @@ async function populateDistrictCheckboxes() {
   }
 }
 
-fetch("http://localhost:8000/metadata")
+fetch(`${API_BASE}/metadata`)
   .then((res) => res.json())
   .then((data) => {
     const districtBoundary = data.district_boundary;
@@ -143,7 +146,7 @@ function loadLULC_State() {
     console.log("✅ Existing LULC removed");
   }
 
-  fetch("http://localhost:8000/lulc-preview")
+  fetch(`${API_BASE}/lulc-preview`)
     .then((res) => res.json())
     .then((lulc2020) => {
       // Add LULC to map and assign to global variable
@@ -211,7 +214,7 @@ async function loadLULC() {
     });
     query.append("year", year);
 
-    const url = `http://localhost:8000/lulc-geojson?${query.toString()}`;
+    const url = `${API_BASE}/lulc-geojson?${query.toString()}`;
     console.log("Fetching LULC data from:", url);
 
     const lulcRes = await fetch(url);
@@ -239,7 +242,7 @@ async function loadLULC() {
 
     // Fetch type names mapping
     const typeRes = await fetch(
-      `http://localhost:8000/lulc-types?${uniqueIds
+      `${API_BASE}/lulc-types?${uniqueIds
         .map((id) => `type_id=${id}`)
         .join("&")}`
     );
