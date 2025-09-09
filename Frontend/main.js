@@ -195,7 +195,7 @@ async function loadLULC() {
 
   try {
     // Fetch metadata once
-    const metadataRes = await fetch("http://localhost:8000/metadata");
+    const metadataRes = await fetch(`${API_BASE}/metadata`);
     if (!metadataRes.ok) throw new Error("Failed to fetch metadata");
     const metadata = await metadataRes.json();
 
