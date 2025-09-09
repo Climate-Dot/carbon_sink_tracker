@@ -30,7 +30,7 @@ print("Starting up...")
 # ==========================
 # Load Environment Variables
 # ==========================
-load_dotenv("D:/ClimateDot/CarbonSink/Backend/credentials.env")
+load_dotenv(os.path.join(os.getcwd(), "Backend", "credentials.env"))
 
 DB_NAME = os.getenv("DB_NAME")
 DB_USER = os.getenv("DB_USER")
