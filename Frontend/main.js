@@ -1,9 +1,10 @@
+// Initialize Leaflet map centered on Gujarat
 const map = L.map("map").setView([22.5, 72.5], 9); // Gujarat center
 
 // Configurable API base URL: set window.API_BASE in production (e.g., Render)
 const API_BASE = window.API_BASE || "http://localhost:8000";
 
-// Add OSM base layer
+// Add light basemap tiles (Carto Light)
 L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
   attribution:
     '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>',
@@ -11,6 +12,7 @@ L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
   maxZoom: 19,
 }).addTo(map);
 
+// Add a metric-only scale control
 L.control
   .scale({
     imperial: false, // set to true if you also want miles/feet
@@ -20,6 +22,7 @@ L.control
   })
   .addTo(map);
 
+// Start time to log load durations
 const st = new Date().getTime();
 
 function getColor(code) {
@@ -64,6 +67,9 @@ function getColor(code) {
   return palette[code] || "#888888"; // fallback gray
 }
 
+/**
+ * Fetch district list and render them as checkboxes in the sidebar.
+ */
 async function populateDistrictCheckboxes() {
   const districtContainer = document.getElementById("district-checkboxes");
 
@@ -103,6 +109,7 @@ async function populateDistrictCheckboxes() {
   }
 }
 
+// Fetch state/district boundaries (drawn once on load)
 fetch(`${API_BASE}/metadata`)
   .then((res) => res.json())
   .then((data) => {
@@ -132,12 +139,14 @@ fetch(`${API_BASE}/metadata`)
   })
   .catch((err) => console.error("Failed to load metadata:", err));
 
-let lulcLayerState = null;
-let villageLayer = null;
-let legend = null;
-let currentLayer = null;
+// Layer/state handles used across interactions
+let lulcLayerState = null;   // State-wide LULC preview layer
+let villageLayer = null;     // Placeholder for village boundaries (optional)
+let legend = null;           // Dynamic legend control
+let currentLayer = null;     // Current district-filtered LULC layer
+let availableYears = [];     // Populated from backend /years
 
-// Fetch LULC separately
+// Fetch lightweight LULC preview separately after boundaries load
 function loadLULC_State() {
   // Remove previous LULC if exists
   if (lulcLayerState) {
@@ -148,9 +157,9 @@ function loadLULC_State() {
 
   fetch(`${API_BASE}/lulc-preview`)
     .then((res) => res.json())
-    .then((lulc2020) => {
+    .then((lulcPreview) => {
       // Add LULC to map and assign to global variable
-      lulcLayerState = L.geoJSON(lulc2020, {
+      lulcLayerState = L.geoJSON(lulcPreview, {
         style: (feature) => ({
           color: getColor(feature.properties.lulc_type),
           weight: 0.5,
@@ -167,6 +176,9 @@ function loadLULC_State() {
     .catch((err) => console.error("Failed to load LULC:", err));
 }
 
+/**
+ * Return the list of selected district names from the checkbox group.
+ */
 function getSelectedDistricts() {
   const checkboxes = document.querySelectorAll(
     'input[name="district"]:checked'
@@ -174,6 +186,10 @@ function getSelectedDistricts() {
   return Array.from(checkboxes).map((cb) => cb.value);
 }
 
+/**
+ * Load LULC polygons for selected districts and year, optionally filtered
+ * by category (forest/wetland/all). Builds legend and popups.
+ */
 async function loadLULC() {
   const districts = getSelectedDistricts();
   const year = document.getElementById("yearSlider").value;
@@ -199,11 +215,13 @@ async function loadLULC() {
     if (!metadataRes.ok) throw new Error("Failed to fetch metadata");
     const metadata = await metadataRes.json();
 
-    // District ID mapping
+    // District ID mapping (name → id) and reverse (id → readable name)
     const districtNameToId = {};
+    const districtIdToName = {};
     metadata.district_boundary.features.forEach((f) => {
       const name = f.properties.name?.toUpperCase();
       if (name) districtNameToId[name] = f.properties.id;
+      if (f.properties.id != null) districtIdToName[f.properties.id] = f.properties.name;
     });
 
     // Build query for selected districts
@@ -235,7 +253,7 @@ async function loadLULC() {
       return true;
     });
 
-    // Collect unique type_ids
+    // Collect unique type_ids to fetch human-readable names once
     const uniqueIds = [
       ...new Set(lulcData.features.map((f) => Number(f.properties.type_id))),
     ];
@@ -249,9 +267,23 @@ async function loadLULC() {
     if (!typeRes.ok) throw new Error("Failed to fetch LULC type names");
     const typeMapping = await typeRes.json(); // { "51": "Evergreen Forest", "181": "Wetland", ... }
 
-    // Add LULC layer
+    // Augment features with readable fields for UI/CSV
+    const augmentedFeatures = filteredFeatures.map((f) => {
+      const typeIdNum = Number(f.properties.type_id);
+      return {
+        ...f,
+        properties: {
+          ...f.properties,
+          type_name: typeMapping[typeIdNum] || "Unknown",
+          district: districtIdToName[f.properties.district_id] || "N/A",
+          area_ha: typeof f.properties.area === "number" ? f.properties.area : Number(f.properties.area) || null,
+        },
+      };
+    });
+
+    // Add LULC layer for filtered features
     currentLayer = L.geoJSON(
-      { type: "FeatureCollection", features: filteredFeatures },
+      { type: "FeatureCollection", features: augmentedFeatures },
       {
         style: (f) => ({
           color: "#333",
@@ -300,11 +332,11 @@ async function loadLULC() {
     // Fit map to LULC bounds
     if (filteredFeatures.length > 0) map.fitBounds(currentLayer.getBounds());
 
-    // Build legend
+    // Build legend based on visible types
     const uniqueTypes = {};
-    filteredFeatures.forEach((f) => {
-      const t = f.properties.type_id;
-        // Skip unwanted types (71, 72, 81)
+    augmentedFeatures.forEach((f) => {
+      const t = Number(f.properties.type_id);
+      // Skip unwanted types
       if ([71, 72, 81, 82].includes(t)) return;
       if (!uniqueTypes[t]) uniqueTypes[t] = typeMapping[t] || "Unknown";
     });
@@ -337,6 +369,7 @@ async function loadLULC() {
   }
 }
 
+// Year controls
 const yearSlider = document.getElementById("yearSlider");
 const yearDisplay = document.getElementById("yearDisplay");
 
@@ -345,12 +378,16 @@ yearSlider.addEventListener("change", () => {
   loadLULC();
 });
 
+/**
+ * Reset UI selections and remove layers/legend from the map.
+ */
 function clearLULC() {
-  // clear the year and reset the year slider to 2020
+  // Reset year slider to earliest available (fallback 2020)
   const yearSlider = document.getElementById("yearSlider");
   const yearDisplay = document.getElementById("yearDisplay");
-  yearSlider.value = 2020;
-  yearDisplay.textContent = 2020;
+  const defaultYear = availableYears.length > 0 ? availableYears[0] : 2020;
+  yearSlider.value = defaultYear;
+  yearDisplay.textContent = defaultYear;
 
   // Clear district checkboxes
   let checkboxes = document.querySelectorAll("input[name='district']");
@@ -377,6 +414,9 @@ function clearLULC() {
   console.log("Cleared year, districts, layers, and legend");
 }
 
+/**
+ * Download currently displayed LULC features as a CSV file.
+ */
 function downloadLULC() {
   if (!currentLayer) {
     alert("No LULC data to download. Please load the map first.");
@@ -417,7 +457,23 @@ function downloadLULC() {
   document.body.removeChild(a);
 }
 
-// Populate dropdowns when page loads
+// On page load: populate districts and configure year slider from backend
 window.onload = () => {
   populateDistrictCheckboxes();
+  // Load available years and configure slider
+  fetch(`${API_BASE}/years`)
+    .then((res) => res.json())
+    .then((years) => {
+      if (Array.isArray(years) && years.length > 0) {
+        availableYears = years;
+        const minYear = Math.min(...years);
+        const maxYear = Math.max(...years);
+        yearSlider.min = String(minYear);
+        yearSlider.max = String(maxYear);
+        yearSlider.step = "1";
+        yearSlider.value = String(minYear);
+        yearDisplay.textContent = String(minYear);
+      }
+    })
+    .catch((err) => console.error("Failed to load years:", err));
 };
