@@ -13,7 +13,7 @@ import time                                        # For performance measurement
 from dotenv import load_dotenv                     # For loading environment variables from .env file
 from fastapi import FastAPI, Query, HTTPException  # FastAPI core and request handling
 from fastapi.middleware.cors import CORSMiddleware # Middleware to allow cross-origin requests
-from fastapi.responses import JSONResponse         # For structured API responses
+from fastapi.responses import JSONResponse, FileResponse  # For structured API responses and serving files
 import geopandas as gpd                            # For working with geospatial data (shapefiles, GeoDataFrames)
 import pyodbc                                      # For SQL Server database connection
 from shapely import wkt, wkb                        # For parsing WKT geometries
@@ -242,6 +242,15 @@ app.add_middleware(
     allow_methods=["*"],        # Allow all HTTP methods
     allow_headers=["*"],        # Allow all headers
 )
+
+# Serve frontend (static files)
+from fastapi.staticfiles import StaticFiles
+app.mount("/static", StaticFiles(directory="Frontend"), name="static")
+
+# Root route serves the frontend
+@app.get("/")
+def serve_frontend():
+    return FileResponse("Frontend/index.html")
 
 # -------------------------------------------------------------------
 # API Routes
