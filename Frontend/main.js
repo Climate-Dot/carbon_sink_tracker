@@ -189,7 +189,25 @@ function loadLULC_State() {
             fillOpacity: 0.6, // Make LULC visible
           }),
         }).addTo(map);
-        console.log("✅ State LULC loaded");
+
+        // Debug: feature count and bounds, and ensure visibility
+        try {
+          const featureCount = Array.isArray(lulcPreview.features) ? lulcPreview.features.length : 0;
+          console.log("✅ State LULC loaded • features:", featureCount);
+          if (featureCount > 0) {
+            const bounds = lulcLayerState.getBounds();
+            if (bounds && bounds.isValid && bounds.isValid()) {
+              console.log("LULC bounds:", bounds.toBBoxString());
+              map.fitBounds(bounds.pad(0.05));
+            } else {
+              console.warn("LULC bounds invalid or empty");
+            }
+            lulcLayerState.bringToFront();
+          }
+        } catch (e) {
+          console.warn("LULC visibility debug failed:", e);
+        }
+
         console.log(
           "Map loaded in",
           (new Date().getTime() - st) / 1000,
