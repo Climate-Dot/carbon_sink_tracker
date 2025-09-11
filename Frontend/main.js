@@ -185,7 +185,8 @@ function loadLULC_State() {
           style: (feature) => ({
             color: getColor(feature.properties.lulc_type),
             weight: 0.5,
-            fillOpacity: 0, // transparent fill for preview
+            fillColor: getColor(feature.properties.lulc_type),
+            fillOpacity: 0.6, // Make LULC visible
           }),
         }).addTo(map);
         console.log("✅ State LULC loaded");
