@@ -55,7 +55,8 @@ def get_connection():
         f"PWD={DB_PASSWORD};"
         "Encrypt=YES;"
         "TrustServerCertificate=NO;"
-        "Connection Timeout=90;"
+        "Connection Timeout=30;"
+        "Command Timeout=60;"
     )
     return pyodbc.connect(conn_str)
 
@@ -167,71 +168,10 @@ async def lifespan(app: FastAPI):
     cur.close()
     conn.close()
 
-    # Load heavy files (village boundary & LULC) in background
-    async def load_heavy_files():
-        """Load heavier reference layers (e.g., LULC preview) off the main thread."""
-        print("Loading heavy files in background...")
-
-        t1 = time.time()
-        try:
-            conn = get_connection()  
-            cur = conn.cursor()
-
-            # Example: Gujarat LULC (2022)
-            print("🗺️ Loading Gujarat LULC (2022) from DB...")
-            cur.execute("""
-                SELECT 
-                    geometry.STAsText() AS geom_wkt, 
-                    district_id, year, type_id
-                FROM fact_lulc_stats WHERE year = 2022
-            """)
-
-            features = []
-            for i, row in enumerate(cur.fetchall()):
-                try:
-                    geom_wkt = row[0]   # geometry.STAsText()
-                    type_id = row[3]    # type_id
-                    
-                    if geom_wkt and geom_wkt.strip():
-                        geom = wkt.loads(geom_wkt)
-                        if geom and not geom.is_empty:
-                            features.append({
-                                "type": "Feature",
-                                "geometry": mapping(geom),
-                                "properties": {"lulc_type": type_id}
-                            })
-                        else:
-                            print(f"Warning: Empty geometry at row {i}")
-                    else:
-                        print(f"Warning: Null or empty WKT at row {i}")
-                except Exception as e:
-                    print(f"Error processing geometry at row {i}: {e}")
-                    continue
-
-            app.state.lulc_2022 = {
-                "type": "FeatureCollection",
-                "features": features
-            }
-
-            print(f"✅ Gujarat LULC loaded in memory: {len(features)} features.")
-            
-            # Validate JSON serialization
-            try:
-                json.dumps(app.state.lulc_2022)
-                print("✅ LULC data is valid JSON")
-            except Exception as json_error:
-                print(f"❌ JSON validation failed: {json_error}")
-                # Reset to empty collection if JSON is invalid
-                app.state.lulc_2022 = {"type": "FeatureCollection", "features": []}
-
-        except Exception as e:
-            print("❌ Error loading LULC:", e)
-        # with open("cache_lulc_2022.geojson") as f:
-        #     app.state.lulc_2022 = json.load(f)
-        # print(f"✅ Gujarat LULC 2022 loaded in {time.time()-t1:.2f} seconds")
-        
-    # Start background task
-    asyncio.create_task(load_heavy_files())
+    # Initialize empty LULC data - will be loaded on demand to save memory
+    app.state.lulc_2020 = {"type": "FeatureCollection", "features": []}
+    app.state.lulc_2022 = {"type": "FeatureCollection", "features": []}
+    print("✅ LULC data will be loaded on demand to save memory")
 
     yield 
     print("Shutting down...")
@@ -269,6 +209,11 @@ def serve_frontend():
 # -------------------------------------------------------------------
 # API Routes
 # -------------------------------------------------------------------
+@app.get("/health")
+def health_check():
+    """Health check endpoint for Render"""
+    return {"status": "healthy", "message": "Carbon Sink Tracker API is running"}
+
 @app.get("/metadata")
 async def get_all_metadata():
     """
@@ -344,9 +289,10 @@ def get_lulc(district_id: list[str] = Query(...), year: int = Query(...)):
         cursor = conn.cursor()
 
         # Dynamically build the WHERE clause based on the number of districts
+        # Add LIMIT to prevent memory issues on large datasets
         if len(district_id) == 1:
             query = """
-                SELECT 
+                SELECT TOP 1000
                     district_id,
                     year,
                     type_id, 
@@ -355,12 +301,13 @@ def get_lulc(district_id: list[str] = Query(...), year: int = Query(...)):
                 FROM fact_lulc_stats
                 WHERE district_id = ?
                 AND year = ?
+                ORDER BY area DESC
             """
             params = [district_id[0], year]
         else:
             placeholders = ",".join("?" * len(district_id))
             query = f"""
-                SELECT 
+                SELECT TOP 1000
                     district_id,
                     year,
                     type_id, 
@@ -369,6 +316,7 @@ def get_lulc(district_id: list[str] = Query(...), year: int = Query(...)):
                 FROM fact_lulc_stats
                 WHERE district_id IN ({placeholders})
                 AND year = ?
+                ORDER BY area DESC
             """
             params = district_id + [year]
 
