@@ -144,6 +144,7 @@ let lulcLayerState = null;   // State-wide LULC preview layer
 let villageLayer = null;     // Placeholder for village boundaries (optional)
 let legend = null;           // Dynamic legend control
 let currentLayer = null;     // Current district-filtered LULC layer
+let loadedLulcLayers = [];   // Array to track all loaded LULC layers
 let availableYears = [];     // Populated from backend /years
 
 // Fetch lightweight LULC preview separately after boundaries load
@@ -231,6 +232,14 @@ async function loadLULC() {
   if (lulcLayerState) map.removeLayer(lulcLayerState);
   if (villageLayer) map.removeLayer(villageLayer);
   if (legend) map.removeControl(legend);
+  
+  // Remove all previously loaded LULC layers
+  loadedLulcLayers.forEach(layer => {
+    if (layer && map.hasLayer(layer)) {
+      map.removeLayer(layer);
+    }
+  });
+  loadedLulcLayers = []; // Clear the tracking array
 
   submitBtn.textContent = "Loading...";
   submitBtn.disabled = true;
@@ -327,6 +336,9 @@ async function loadLULC() {
         },
       }
     ).addTo(map);
+    
+    // Add to tracking array
+    loadedLulcLayers.push(currentLayer);
 
     // Add village boundaries for selected districts
     // const selectedDistrictsUpper = districts.map(d => d.toUpperCase());
@@ -401,7 +413,7 @@ const yearDisplay = document.getElementById("yearDisplay");
 
 yearSlider.addEventListener("change", () => {
   yearDisplay.textContent = yearSlider.value;
-  loadLULC();
+  // Removed auto-loading - user must click Load button to load LULC data
 });
 
 /**
@@ -419,11 +431,20 @@ function clearLULC() {
   let checkboxes = document.querySelectorAll("input[name='district']");
   checkboxes.forEach((cb) => (cb.checked = false));
 
-  // Remove current LULC layer if exists
-  if (currentLayer) {
-    map.removeLayer(currentLayer);
-    currentLayer = null;
+  // Remove state-wide LULC preview layer if exists
+  if (lulcLayerState) {
+    map.removeLayer(lulcLayerState);
+    lulcLayerState = null;
   }
+
+  // Remove all loaded LULC layers
+  loadedLulcLayers.forEach(layer => {
+    if (layer && map.hasLayer(layer)) {
+      map.removeLayer(layer);
+    }
+  });
+  loadedLulcLayers = []; // Clear the tracking array
+  currentLayer = null; // Reset current layer reference
 
   // Remove village layer if exists
   if (villageLayer) {
