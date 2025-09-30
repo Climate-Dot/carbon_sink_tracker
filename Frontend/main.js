@@ -1,6 +1,10 @@
-const map = L.map("map").setView([22.5, 72.5], 8); // Gujarat center
+// Initialize Leaflet map centered on Gujarat
+const map = L.map("map").setView([22.5, 72.5], 9); // Gujarat center
 
-// Add OSM base layer
+// Configurable API base URL: set window.API_BASE in production (e.g., Render)
+const API_BASE = window.API_BASE || "http://localhost:8000";
+
+// Add light basemap tiles (Carto Light)
 L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
   attribution:
     '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>',
@@ -8,6 +12,7 @@ L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
   maxZoom: 19,
 }).addTo(map);
 
+// Add a metric-only scale control
 L.control
   .scale({
     imperial: false, // set to true if you also want miles/feet
@@ -17,6 +22,7 @@ L.control
   })
   .addTo(map);
 
+// Start time to log load durations
 const st = new Date().getTime();
 
 function getColor(code) {
@@ -61,103 +67,14 @@ function getColor(code) {
   return palette[code] || "#888888"; // fallback gray
 }
 
-fetch("http://localhost:8000/metadata")
-  .then((res) => res.json())
-  .then((data) => {
-    const districtBoundary = data.district_boundary;
-    const stateBoundary = data.state_boundary;
-    console.log("working");
-    // const lulcVector = data.lulc_vector;
-    // const lulc = data.lulc;
-
-    const districtLayer = L.geoJSON(districtBoundary, {
-      style: {
-        color: "#414d55c4",
-        weight: 2,
-        fillOpacity: 0,
-      },
-      // onEachFeature: function (feature, layer) {
-      //   if (feature.properties && feature.properties.DISTRICT) {
-      //     // Get centroid of the feature geometry
-      //     var centroid = layer.getBounds().getCenter();
-      //     var marker = L.marker(centroid).addTo(map);
-      //     // Bind tooltip or popup with district name
-      //     marker.bindPopup(feature.properties.DISTRICT);
-      //     marker.openPopup();
-      //   }
-      // },
-    }).addTo(map);
-
-    // Draw state boundary
-    L.geoJSON(stateBoundary, {
-      pointToLayer: () => L.layerGroup([]),
-      style: {
-        color: "#111010ff",
-        weight: 4,
-        fillOpacity: 0,
-      },
-    }).addTo(map);
-
-    // L.geoJSON(lulc, {
-    //   pointToLayer: () => L.layerGroup([]),
-    //   style: function (feature) {
-    //     const lulctype = feature.properties.type_id; 
-    //     return {
-    //       color: getColor(lulctype), 
-    //       weight: 2,
-    //       fillOpacity: 0.6,
-    //     };
-    //   },
-    // }).addTo(map);
-
-    // Zoom to district layer bounds
-    map.fitBounds(districtLayer.getBounds());
-
-    console.log("Map loaded in", (new Date().getTime() - st) / 1000, "seconds");
-  })
-  .catch((err) => console.error("Failed to load metadata:", err));
-
-let currentLayer = null;
-
-// async function populateDropdowns() {
-//   const districtSelect = document.getElementById('district');
-//   const yearSelect = document.getElementById('year');
-
-//   try {
-//     const [districtRes, yearRes] = await Promise.all([
-//       fetch('http://127.0.0.1:8000/districts'),
-//       fetch('http://127.0.0.1:8000/years')
-//     ]);
-
-//     const districts = await districtRes.json();
-//     const years = await yearRes.json();
-
-//     districtSelect.innerHTML = '<option value="" disabled selected>Select District</option>';
-//     yearSelect.innerHTML = '<option value="" disabled selected>Select Year</option>';
-
-//     districts.forEach(d => {
-//       const option = document.createElement('option');
-//       option.value = d;
-//       option.textContent = d;
-//       districtSelect.appendChild(option);
-//     });
-
-//     years.forEach(y => {
-//       const option = document.createElement('option');
-//       option.value = y;
-//       option.textContent = y;
-//       yearSelect.appendChild(option);
-//     });
-//   } catch (error) {
-//     alert("Failed to load dropdown values: " + error);
-//   }
-// }
-
+/**
+ * Fetch district list and render them as checkboxes in the sidebar.
+ */
 async function populateDistrictCheckboxes() {
   const districtContainer = document.getElementById("district-checkboxes");
 
   try {
-    const districtRes = await fetch("http://127.0.0.1:8000/districts");
+    const districtRes = await fetch(`${API_BASE}/districts`);
     const districts = await districtRes.json();
 
     // Clear previous content
@@ -165,15 +82,18 @@ async function populateDistrictCheckboxes() {
 
     // Add checkboxes for each district
     districts.forEach((d) => {
+      // Format district name: First letter uppercase, rest lowercase
+      const formattedName =
+        d.charAt(0).toUpperCase() + d.slice(1).toLowerCase();
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
       checkbox.name = "district";
-      checkbox.value = d;
-      checkbox.id = `district-${d}`;
+      checkbox.value = formattedName;
+      checkbox.id = `district-${formattedName}`;
 
       const label = document.createElement("label");
       label.htmlFor = checkbox.id;
-      label.textContent = d;
+      label.textContent = formattedName;
 
       const wrapper = document.createElement("div");
       wrapper.style.display = "flex";
@@ -189,9 +109,179 @@ async function populateDistrictCheckboxes() {
   }
 }
 
-let legend = null; // global legend control reference
-let villageLayer = null;
+// Fetch state/district boundaries (drawn once on load)
+fetch(`${API_BASE}/metadata`)
+  .then((res) => res.json())
+  .then((data) => {
+    const districtBoundary = data.district_boundary;
+    const stateBoundary = data.state_boundary;
+    const districtLayer = L.geoJSON(districtBoundary, {
+      style: {
+        color: "#414d55c4",
+        weight: 2,
+        fillOpacity: 0,
+      },
+    }).addTo(map);
 
+    // Draw state boundary
+    L.geoJSON(stateBoundary, {
+      style: {
+        color: "#111010ff",
+        weight: 4,
+        fillOpacity: 0,
+      },
+    }).addTo(map);
+
+    // Zoom to district layer bounds
+    map.fitBounds(districtLayer.getBounds());
+    console.log("Map loaded in", (new Date().getTime() - st) / 1000, "seconds");
+    loadLULC_State();
+  })
+  .catch((err) => console.error("Failed to load metadata:", err));
+
+// Layer/state handles used across interactions
+let lulcLayerState = null;   // State-wide LULC preview layer
+let villageLayer = null;     // Placeholder for village boundaries (optional)
+let legend = null;           // Dynamic legend control
+let currentLayer = null;     // Current district-filtered LULC layer
+let loadedLulcLayers = [];   // Array to track all loaded LULC layers
+let drawnItems = new L.FeatureGroup(); // Holds user-drawn shapes
+map.addLayer(drawnItems);
+
+// Add Leaflet.draw controls (polygon only)
+const drawControl = new L.Control.Draw({
+  draw: {
+    polygon: {
+      allowIntersection: false,
+      showArea: true,
+      drawError: { color: '#e1e100', message: '<strong>Error:</strong> polygons cannot intersect!' },
+      shapeOptions: { color: '#3f51b5', weight: 2, fillOpacity: 0.1 }
+    },
+    rectangle: false,
+    polyline: false,
+    circle: false,
+    marker: false,
+    circlemarker: false
+  },
+  edit: { featureGroup: drawnItems, edit: true, remove: true }
+});
+map.addControl(drawControl);
+
+// Handle polygon creation event
+map.on(L.Draw.Event.CREATED, async (e) => {
+  const layer = e.layer;
+  drawnItems.addLayer(layer);
+  try {
+    const geom = layer.toGeoJSON().geometry;
+    const year = document.getElementById('yearSlider').value;
+
+    // Query backend for LULC intersecting the drawn polygon
+    const res = await fetch(`${API_BASE}/lulc-by-polygon?year=${encodeURIComponent(year)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(geom)
+    });
+    if (!res.ok) throw new Error(`Backend error ${res.status}`);
+    const geojson = await res.json();
+
+    // Render the results similarly to loadLULC styling
+    const layerResult = L.geoJSON(geojson, {
+      style: (f) => ({
+        color: '#333',
+        weight: 0,
+        fillColor: getColor(Number(f.properties.type_id)),
+        fillOpacity: 0.6,
+      })
+    }).addTo(map);
+    loadedLulcLayers.push(layerResult);
+    if (geojson.features && geojson.features.length > 0) {
+      map.fitBounds(layerResult.getBounds());
+    }
+  } catch (err) {
+    console.error('Polygon query failed:', err);
+    alert('Failed to load LULC for drawn polygon: ' + err.message);
+  }
+});
+let availableYears = [];     // Populated from backend /years
+
+// Fetch lightweight LULC preview separately after boundaries load
+function loadLULC_State() {
+  // Remove previous LULC if exists
+  if (lulcLayerState) {
+    map.removeLayer(lulcLayerState);
+    lulcLayerState = null;
+    console.log("✅ Existing LULC removed");
+  }
+
+  fetch(`${API_BASE}/lulc-preview`)
+    .then((res) => {
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      return res.text(); // Get as text first to debug JSON issues
+    })
+    .then((text) => {
+      try {
+        const lulcPreview = JSON.parse(text);
+        
+        // Validate the GeoJSON structure
+        if (!lulcPreview || typeof lulcPreview !== 'object') {
+          throw new Error('Invalid JSON response');
+        }
+        
+        if (!lulcPreview.type || lulcPreview.type !== 'FeatureCollection') {
+          throw new Error('Invalid GeoJSON: missing or invalid type');
+        }
+        
+        if (!Array.isArray(lulcPreview.features)) {
+          throw new Error('Invalid GeoJSON: features is not an array');
+        }
+        
+        // Add LULC to map and assign to global variable
+        lulcLayerState = L.geoJSON(lulcPreview, {
+          style: (feature) => ({
+            color: getColor(feature.properties.lulc_type),
+            weight: 0.5,
+            fillColor: getColor(feature.properties.lulc_type),
+            fillOpacity: 0.6, // Make LULC visible
+          }),
+        }).addTo(map);
+
+        // Debug: feature count and bounds, and ensure visibility
+        try {
+          const featureCount = Array.isArray(lulcPreview.features) ? lulcPreview.features.length : 0;
+          console.log("✅ State LULC loaded • features:", featureCount);
+          if (featureCount > 0) {
+            const bounds = lulcLayerState.getBounds();
+            if (bounds && bounds.isValid && bounds.isValid()) {
+              console.log("LULC bounds:", bounds.toBBoxString());
+              map.fitBounds(bounds.pad(0.05));
+            } else {
+              console.warn("LULC bounds invalid or empty");
+            }
+            lulcLayerState.bringToFront();
+          }
+        } catch (e) {
+          console.warn("LULC visibility debug failed:", e);
+        }
+
+        console.log(
+          "Map loaded in",
+          (new Date().getTime() - st) / 1000,
+          "seconds"
+        );
+      } catch (parseError) {
+        console.error("JSON parsing error:", parseError);
+        console.error("Response text (first 500 chars):", text.substring(0, 500));
+        throw new Error(`JSON parsing failed: ${parseError.message}`);
+      }
+    })
+    .catch((err) => console.error("Failed to load LULC:", err));
+}
+
+/**
+ * Return the list of selected district names from the checkbox group.
+ */
 function getSelectedDistricts() {
   const checkboxes = document.querySelectorAll(
     'input[name="district"]:checked'
@@ -199,206 +289,318 @@ function getSelectedDistricts() {
   return Array.from(checkboxes).map((cb) => cb.value);
 }
 
+/**
+ * Load LULC polygons for selected districts and year, optionally filtered
+ * by category (forest/wetland/all). Builds legend and popups.
+ */
 async function loadLULC() {
-  // const district = document.getElementById("district").value;
-  // const year = document.getElementById("year").value;
   const districts = getSelectedDistricts();
   const year = document.getElementById("yearSlider").value;
   const filterType = document.getElementById("lulcFilter").value;
   const submitBtn = document.getElementById("submitBtn");
 
-  if (!districts || !year) {
-    alert("Please select both district and year.");
+  if (!districts || districts.length === 0 || !year) {
+    alert("Please select at least one district and year.");
     return;
   }
+
+  // Remove previous layers
+  if (lulcLayerState) map.removeLayer(lulcLayerState);
+  if (villageLayer) map.removeLayer(villageLayer);
+  if (legend) map.removeControl(legend);
+  
+  // Remove all previously loaded LULC layers
+  loadedLulcLayers.forEach(layer => {
+    if (layer && map.hasLayer(layer)) {
+      map.removeLayer(layer);
+    }
+  });
+  loadedLulcLayers = []; // Clear the tracking array
 
   submitBtn.textContent = "Loading...";
   submitBtn.disabled = true;
 
-  // const url = `http://127.0.0.1:8000/lulc-geojson?district=${district}&year=${year}`;
-
-  // Build query string for multiple districts
-  const query = new URLSearchParams();
-  districts.forEach((d) => query.append("district", d));
-  query.append("year", year);
-
-  const url = `http://127.0.0.1:8000/lulc-geojson?${query.toString()}`;
-  console.log(url);
-
   try {
-    const res = await fetch(url);
-    const data = await res.json();
+    // Fetch metadata once
+    const metadataRes = await fetch(`${API_BASE}/metadata`);
+    if (!metadataRes.ok) throw new Error("Failed to fetch metadata");
+    const metadata = await metadataRes.json();
 
-    if (currentLayer) {
-      map.removeLayer(currentLayer);
-    }
-
-    if (villageLayer) {
-      map.removeLayer(villageLayer); // remove previous villages
-    }
-
-    const filteredFeatures = data.features.filter((feature) => {
-      const type = Number(feature.properties.type_id);
-
-      if (filterType === "forest") {
-        return (
-          type === 51 ||
-          type === 52 || // Reserved and Protected Forest
-          type === 61 ||
-          type === 62 || // Forest Plantation
-          type === 71 ||
-          type === 72 || // Dense Forest
-          type === 81 ||
-          type === 82 || // Open Forest
-          type === 91 ||
-          type === 92 || // Scrub Forest
-          type === 181 ||
-          type === 182 ||
-          type === 183 ||
-          type === 186
-        );
-      } else if (filterType === "wetland") {
-        return type === 181 || type === 182 || type === 183 || type === 186;
-      }
-      return true; // default is all
+    // District ID mapping (name → id) and reverse (id → readable name)
+    const districtNameToId = {};
+    const districtIdToName = {};
+    metadata.district_boundary.features.forEach((f) => {
+      const name = f.properties.name?.toUpperCase();
+      if (name) districtNameToId[name] = f.properties.id;
+      if (f.properties.id != null) districtIdToName[f.properties.id] = f.properties.name;
     });
 
-    currentLayer = L.geoJSON(
-      { type: "FeatureCollection", features: filteredFeatures },
-      {
-        style: (feature) => {
-          const lulc_type = Number(feature.properties.type_id);
-          let borderWeight = 0;
-          const forestTypes = [
-            51, 52, 61, 62, 71, 72, 81, 82, 91, 92, 181, 182, 183, 186,
-          ]; // Forest and wetlands types
-          const wetlandTypes = [181, 182, 183, 186]; // Wetland types
-          if (
-            forestTypes.includes(lulc_type) ||
-            wetlandTypes.includes(lulc_type)
-          ) {
-            borderWeight = 0.5; // Thicker border
-          }
-          return {
-            color: "#333",
-            weight: borderWeight,
-            fillColor: getColor(lulc_type),
-            fillOpacity: 0.8,
-          };
-        },
-        onEachFeature: (feature, layer) => {
-          const props = feature.properties;
-          layer.bindPopup(
-            `<b>Type:</b> ${props.type_name}<br><b>Area:</b> ${
-              props.area_ha?.toFixed(2) || "N/A"
-            } ha`
-          );
-          // layer.on({
-          //   mouseover: function (e) {
-          //     const hoveredLayer = e.target;
-          //     hoveredLayer.setStyle({
-          //       weight: 1,
-          //       color: '#ffcc00',   // golden glow
-          //       fillOpacity: 1.0
-          //     });
+    // Build query for selected districts
+    const query = new URLSearchParams();
+    districts.forEach((d) => {
+      const id = districtNameToId[d.toUpperCase()];
+      if (id) query.append("district_id", id);
+    });
+    query.append("year", year);
 
-          //     // Bring to front for visibility
-          //     if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
-          //       hoveredLayer.bringToFront();
-          //     }
-          //   },
-          //   mouseout: function (e) {
-          //     currentLayer.resetStyle(e.target); // resets to original style
-          //   }
-          // });
+    const url = `${API_BASE}/lulc-geojson?${query.toString()}`;
+    console.log("Fetching LULC data from:", url);
+
+    const lulcRes = await fetch(url);
+    if (!lulcRes.ok) throw new Error("Failed to fetch LULC data");
+    const lulcData = await lulcRes.json();
+
+    // Define LULC type groups
+    const forestTypes = [
+      51, 52, 61, 62, 71, 72, 81, 82, 91, 92, 181, 182, 183, 186,
+    ];
+    const wetlandTypes = [181, 182, 183, 186];
+
+    // Filter LULC features
+    const filteredFeatures = lulcData.features.filter((f) => {
+      const t = Number(f.properties.type_id);
+      if (filterType === "forest") return forestTypes.includes(t);
+      if (filterType === "wetland") return wetlandTypes.includes(t);
+      return true;
+    });
+
+    // Collect unique type_ids to fetch human-readable names once
+    const uniqueIds = [
+      ...new Set(lulcData.features.map((f) => Number(f.properties.type_id))),
+    ];
+
+    // Fetch type names mapping
+    const typeRes = await fetch(
+      `${API_BASE}/lulc-types?${uniqueIds
+        .map((id) => `type_id=${id}`)
+        .join("&")}`
+    );
+    if (!typeRes.ok) throw new Error("Failed to fetch LULC type names");
+    const typeMapping = await typeRes.json(); // { "51": "Evergreen Forest", "181": "Wetland", ... }
+
+    // Augment features with readable fields for UI/CSV
+    const augmentedFeatures = filteredFeatures.map((f) => {
+      const typeIdNum = Number(f.properties.type_id);
+      return {
+        ...f,
+        properties: {
+          ...f.properties,
+          type_name: typeMapping[typeIdNum] || "Unknown",
+          district: districtIdToName[f.properties.district_id] || "N/A",
+          area_ha: typeof f.properties.area === "number" ? f.properties.area : Number(f.properties.area) || null,
+        },
+      };
+    });
+
+    // Add LULC layer for filtered features
+    currentLayer = L.geoJSON(
+      { type: "FeatureCollection", features: augmentedFeatures },
+      {
+        style: (f) => ({
+          color: "#333",
+          weight: forestTypes.includes(Number(f.properties.type_id)) ? 0.5 : 0,
+          fillColor: getColor(Number(f.properties.type_id)),
+          fillOpacity: 0.6,
+        }),
+        onEachFeature: (f, layer) => {
+          const typeId = Number(f.properties.type_id);
+          const typeName = typeMapping[typeId] || "Unknown";
+          layer.bindPopup(
+            `<b>Type:</b> ${typeName}<br>
+            <b>Area:</b> ${f.properties.area?.toFixed(2) || "N/A"} ha`
+          );
         },
       }
     ).addTo(map);
+    
+    // Add to tracking array
+    loadedLulcLayers.push(currentLayer);
 
-    // Add village boundaries after LULC is drawn
-    const metadataRes = await fetch("http://localhost:8000/metadata");
-    const metadata = await metadataRes.json();
-    const villageBoundary = metadata.village_boundary;
+    // Add village boundaries for selected districts
+    // const selectedDistrictsUpper = districts.map(d => d.toUpperCase());
+    // const filteredVillages = {
+    //   type: "FeatureCollection",
+    //   features: metadata.village_boundary.features.filter(f => {
+    //     const districtName = f.properties?.DISTRICT?.toUpperCase() || f.properties?.District?.toUpperCase();
+    //     return selectedDistrictsUpper.includes(districtName);
+    //   })
+    // };
 
-    villageLayer = L.geoJSON(villageBoundary, {
-      style: {
-        color: "#ddd5e8ff",
-        weight: 1,
-        fillOpacity: 0,
-      },
-      onEachFeature: (feature, layer) => {
-        if (feature.properties?.VILLAGE) {
-          layer.bindPopup(`<b>Village:</b> ${feature.properties.VILLAGE}`);
-        }
-      },
-    }).addTo(map);
+    // villageLayer = L.geoJSON(filteredVillages, {
+    //   style: {
+    //     color: "#ddd5e8",
+    //     weight: 2,
+    //     fillOpacity: 0,
+    //   },
+    //   onEachFeature: (feature, layer) => {
+    //     layer.bindPopup(
+    //       `<b>Village:</b> ${feature.properties.VILLAGE || "N/A"}<br>
+    //        <b>District:</b> ${feature.properties.DISTRICT || feature.properties.District || "N/A"}`
+    //     );
+    //   }
+    // }).addTo(map);
 
-    map.fitBounds(currentLayer.getBounds());
+    // Bring LULC on top
+    currentLayer.bringToFront();
 
-    // Build legend dynamically
+    // Fit map to LULC bounds
+    if (filteredFeatures.length > 0) map.fitBounds(currentLayer.getBounds());
+
+    // Build legend based on visible types
     const uniqueTypes = {};
-    filteredFeatures.forEach((f) => {
-      const t = f.properties.type_id;
-      const name = f.properties.type_name;
-      if (!uniqueTypes[t]) {
-        uniqueTypes[t] = {
-          label: name,
-        };
-      }
+    augmentedFeatures.forEach((f) => {
+      const t = Number(f.properties.type_id);
+      // Skip unwanted types
+      if ([71, 72, 81, 82].includes(t)) return;
+      if (!uniqueTypes[t]) uniqueTypes[t] = typeMapping[t] || "Unknown";
     });
-
-    // Remove old legend if it exists
-    if (legend) {
-      map.removeControl(legend);
-    }
 
     legend = L.control({ position: "bottomright" });
     legend.onAdd = function (map) {
       const div = L.DomUtil.create("div", "info legend");
-
-      const filterLabel = {
-        all: "LULC Legend",
-        forest: "Carbon Sink: Forest and Wetland",
-        wetland: "Wetland Types",
-      };
-      const filterType = document.getElementById("lulcFilter").value;
-      let html = `<h4>${filterLabel[filterType] || "LULC Legend"}</h4>`;
-
-      for (const [code, info] of Object.entries(uniqueTypes)) {
-        if (
-          info.label === "Closed evergreen needle-leaved forest" ||
-          info.label === "Open evergreen needle-leaved forest" ||
-          info.label === "Open deciduous needle-leaved forest"
-        ) {
-          continue;
-        }
-        html += `
-          <i style="background:${getColor(
-            Number(code)
-          )}; width: 29px; height: 18px; display: inline-block; margin-right: 8px;"></i>
-          ${info.label} <br>`;
+      let html = `<h4>${
+        filterType === "forest"
+          ? "Forest & Wetland"
+          : filterType === "wetland"
+          ? "Wetlands"
+          : "LULC Legend"
+      }</h4>`;
+      for (const [code, label] of Object.entries(uniqueTypes)) {
+        html += `<i style="background:${getColor(
+          Number(code)
+        )}; width: 29px; height: 18px; display: inline-block; margin-right: 8px;"></i> ${label}<br>`;
       }
       div.innerHTML = html;
       return div;
     };
     legend.addTo(map);
   } catch (err) {
-    alert("Failed to load LULC data: " + err);
+    console.error(err);
+    alert("Failed to load LULC data: " + err.message);
   } finally {
     submitBtn.textContent = "Load";
     submitBtn.disabled = false;
   }
 }
 
+// Year controls
 const yearSlider = document.getElementById("yearSlider");
 const yearDisplay = document.getElementById("yearDisplay");
 
 yearSlider.addEventListener("change", () => {
   yearDisplay.textContent = yearSlider.value;
-  loadLULC();
+  // Removed auto-loading - user must click Load button to load LULC data
 });
 
-// Populate dropdowns when page loads
+/**
+ * Reset UI selections and remove layers/legend from the map.
+ */
+function clearLULC() {
+  // Reset year slider to earliest available (fallback 2020)
+  const yearSlider = document.getElementById("yearSlider");
+  const yearDisplay = document.getElementById("yearDisplay");
+  const defaultYear = availableYears.length > 0 ? availableYears[0] : 2020;
+  yearSlider.value = defaultYear;
+  yearDisplay.textContent = defaultYear;
+
+  // Clear district checkboxes
+  let checkboxes = document.querySelectorAll("input[name='district']");
+  checkboxes.forEach((cb) => (cb.checked = false));
+
+  // Remove state-wide LULC preview layer if exists
+  if (lulcLayerState) {
+    map.removeLayer(lulcLayerState);
+    lulcLayerState = null;
+  }
+
+  // Remove all loaded LULC layers
+  loadedLulcLayers.forEach(layer => {
+    if (layer && map.hasLayer(layer)) {
+      map.removeLayer(layer);
+    }
+  });
+  loadedLulcLayers = []; // Clear the tracking array
+  currentLayer = null; // Reset current layer reference
+
+  // Remove village layer if exists
+  if (villageLayer) {
+    map.removeLayer(villageLayer);
+    villageLayer = null;
+  }
+
+  // Remove legend if exists
+  if (legend) {
+    map.removeControl(legend);
+    legend = null;
+  }
+
+  console.log("Cleared year, districts, layers, and legend");
+}
+
+/**
+ * Download currently displayed LULC features as a CSV file.
+ */
+function downloadLULC() {
+  if (!currentLayer && loadedLulcLayers.length === 0) {
+    alert("No LULC data to download. Please load the map or draw a polygon first.");
+    return;
+  }
+
+  // Extract features from current LULC layer
+  const features = [];
+  const collect = (layerGroup) => {
+    layerGroup.eachLayer((layer) => {
+      if (layer.feature && layer.feature.properties) {
+        const props = layer.feature.properties;
+        features.push({
+          district: props.district || props.DISTRICT || "N/A",
+          lulc_type: props.type_name || String(props.type_id) || "Unknown",
+          area: props.area_ha ? props.area_ha.toFixed(2) : (props.area ? String(props.area) : "N/A"),
+        });
+      }
+    });
+  };
+  if (currentLayer) collect(currentLayer);
+  loadedLulcLayers.forEach((lyr) => collect(lyr));
+
+  if (features.length === 0) {
+    alert("No feature data found to export.");
+    return;
+  }
+
+  // Convert to CSV
+  const headers = ["District", "LULC Type", "Area (ha)"];
+  const rows = features.map((f) => [f.district, f.lulc_type, f.area].join(","));
+  const csvContent = [headers.join(","), ...rows].join("\n");
+
+  // Create and trigger download
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "lulc_data.csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+// On page load: populate districts and configure year slider from backend
 window.onload = () => {
   populateDistrictCheckboxes();
+  // Load available years and configure slider
+  fetch(`${API_BASE}/years`)
+    .then((res) => res.json())
+    .then((years) => {
+      if (Array.isArray(years) && years.length > 0) {
+        availableYears = years;
+        const minYear = Math.min(...years);
+        const maxYear = Math.max(...years);
+        yearSlider.min = String(minYear);
+        yearSlider.max = String(maxYear);
+        yearSlider.step = "1";
+        yearSlider.value = String(minYear);
+        yearDisplay.textContent = String(minYear);
+      }
+    })
+    .catch((err) => console.error("Failed to load years:", err));
 };
