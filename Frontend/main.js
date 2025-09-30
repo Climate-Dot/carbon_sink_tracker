@@ -145,6 +145,63 @@ let villageLayer = null;     // Placeholder for village boundaries (optional)
 let legend = null;           // Dynamic legend control
 let currentLayer = null;     // Current district-filtered LULC layer
 let loadedLulcLayers = [];   // Array to track all loaded LULC layers
+let drawnItems = new L.FeatureGroup(); // Holds user-drawn shapes
+map.addLayer(drawnItems);
+
+// Add Leaflet.draw controls (polygon only)
+const drawControl = new L.Control.Draw({
+  draw: {
+    polygon: {
+      allowIntersection: false,
+      showArea: true,
+      drawError: { color: '#e1e100', message: '<strong>Error:</strong> polygons cannot intersect!' },
+      shapeOptions: { color: '#3f51b5', weight: 2, fillOpacity: 0.1 }
+    },
+    rectangle: false,
+    polyline: false,
+    circle: false,
+    marker: false,
+    circlemarker: false
+  },
+  edit: { featureGroup: drawnItems, edit: true, remove: true }
+});
+map.addControl(drawControl);
+
+// Handle polygon creation event
+map.on(L.Draw.Event.CREATED, async (e) => {
+  const layer = e.layer;
+  drawnItems.addLayer(layer);
+  try {
+    const geom = layer.toGeoJSON().geometry;
+    const year = document.getElementById('yearSlider').value;
+
+    // Query backend for LULC intersecting the drawn polygon
+    const res = await fetch(`${API_BASE}/lulc-by-polygon?year=${encodeURIComponent(year)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(geom)
+    });
+    if (!res.ok) throw new Error(`Backend error ${res.status}`);
+    const geojson = await res.json();
+
+    // Render the results similarly to loadLULC styling
+    const layerResult = L.geoJSON(geojson, {
+      style: (f) => ({
+        color: '#333',
+        weight: 0,
+        fillColor: getColor(Number(f.properties.type_id)),
+        fillOpacity: 0.6,
+      })
+    }).addTo(map);
+    loadedLulcLayers.push(layerResult);
+    if (geojson.features && geojson.features.length > 0) {
+      map.fitBounds(layerResult.getBounds());
+    }
+  } catch (err) {
+    console.error('Polygon query failed:', err);
+    alert('Failed to load LULC for drawn polygon: ' + err.message);
+  }
+});
 let availableYears = [];     // Populated from backend /years
 
 // Fetch lightweight LULC preview separately after boundaries load
@@ -484,23 +541,27 @@ function clearLULC() {
  * Download currently displayed LULC features as a CSV file.
  */
 function downloadLULC() {
-  if (!currentLayer) {
-    alert("No LULC data to download. Please load the map first.");
+  if (!currentLayer && loadedLulcLayers.length === 0) {
+    alert("No LULC data to download. Please load the map or draw a polygon first.");
     return;
   }
 
   // Extract features from current LULC layer
   const features = [];
-  currentLayer.eachLayer((layer) => {
-    if (layer.feature && layer.feature.properties) {
-      const props = layer.feature.properties;
-      features.push({
-        district: props.district || props.DISTRICT || "N/A",
-        lulc_type: props.type_name || "Unknown",
-        area: props.area_ha ? props.area_ha.toFixed(2) : "N/A",
-      });
-    }
-  });
+  const collect = (layerGroup) => {
+    layerGroup.eachLayer((layer) => {
+      if (layer.feature && layer.feature.properties) {
+        const props = layer.feature.properties;
+        features.push({
+          district: props.district || props.DISTRICT || "N/A",
+          lulc_type: props.type_name || String(props.type_id) || "Unknown",
+          area: props.area_ha ? props.area_ha.toFixed(2) : (props.area ? String(props.area) : "N/A"),
+        });
+      }
+    });
+  };
+  if (currentLayer) collect(currentLayer);
+  loadedLulcLayers.forEach((lyr) => collect(lyr));
 
   if (features.length === 0) {
     alert("No feature data found to export.");

@@ -14,9 +14,10 @@ from dotenv import load_dotenv                     # For loading environment var
 from fastapi import FastAPI, Query, HTTPException  # FastAPI core and request handling
 from fastapi.middleware.cors import CORSMiddleware # Middleware to allow cross-origin requests
 from fastapi.responses import JSONResponse, FileResponse  # For structured API responses and serving files
+from fastapi import Body
 import pyodbc                                      # For SQL Server database connection
 from shapely import wkt, wkb                        # For parsing WKT geometries
-from shapely.geometry import mapping                     # For converting geometries to GeoJSON
+from shapely.geometry import mapping, shape               # For converting geometries to/from GeoJSON
 # ==========================
 
 # ==========================
@@ -384,3 +385,62 @@ def get_lulc_types(type_id: list[int] = Query(...)):
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
+
+@app.post("/lulc-by-polygon")
+def get_lulc_by_polygon(geojson: dict = Body(...), year: int = Query(...)):
+    """Return LULC features intersecting the provided GeoJSON polygon for a year.
+
+    Accepts a GeoJSON geometry (Polygon or MultiPolygon). Converts it to WKT and
+    performs a spatial intersection against fact_lulc_stats.geometry.
+    """
+    try:
+        geom = shape(geojson)
+        wkt_polygon = geom.wkt
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid GeoJSON: {e}")
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        # Use STIntersects to filter polygons by intersection with input geometry
+        query = (
+            """
+            SELECT 
+                district_id,
+                year,
+                type_id,
+                area,
+                geometry.STAsText() AS geometry
+            FROM fact_lulc_stats
+            WHERE year = ?
+              AND geometry.STIntersects(geometry::STGeomFromText(?, 4326)) = 1
+            """
+        )
+        cursor.execute(query, [year, wkt_polygon])
+        rows = cursor.fetchall()
+
+        features = []
+        columns = [col[0] for col in cursor.description]
+        for row in rows:
+            row_dict = dict(zip(columns, row))
+            wkt_geom = row_dict.pop("geometry")
+            geom = wkt.loads(wkt_geom) if wkt_geom else None
+            geometry = mapping(geom) if geom else None
+            features.append({
+                "type": "Feature",
+                "geometry": geometry,
+                "properties": row_dict,
+            })
+
+        return {"type": "FeatureCollection", "features": features}
+    except Exception as e:
+        print(f"Database error (polygon): {e}")
+        raise HTTPException(status_code=500, detail="Failed to query LULC by polygon")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
