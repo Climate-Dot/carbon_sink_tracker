@@ -1,8 +1,12 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>LULC Map Viewer</title>
+    <title>Carbon Sink Tracker</title>
+    <meta name="description" content="Carbon Sink Tracker - Interactive Land Use Land Cover mapping and analytics for Gujarat" />
+    <meta name="keywords" content="carbon sink, LULC, land use, land cover, Gujarat, mapping, analytics" />
+    <meta name="author" content="Carbon Sink Tracker" />
+    <link rel="icon" type="image/svg+xml" href="logo.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <!-- Leaflet CSS -->
@@ -13,31 +17,42 @@
       rel="stylesheet"
     />
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <div id="controls">
-      <div id="logo-container">
-        <img src="/static/logo.svg" alt="Logo" id="logo" />
+    <!-- Statistics Box -->
+    <div id="stats-box" class="stats-box">
+      <h4>Carbon Sink Area</h4>
+      <div class="stat-item">
+        <span class="stat-label">Forest:</span>
+        <span id="forest-area" class="stat-value">0 sq km</span>
       </div>
-      <h2>Carbon Sink Tracker</h2>
+      <div class="stat-item">
+        <span class="stat-label">Wetland:</span>
+        <span id="wetland-area" class="stat-value">0 sq km</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Total:</span>
+        <span id="total-area" class="stat-value">0 sq km</span>
+      </div>
+    </div>
+    
+    <div id="controls">
+      <div id="header-container">
+        <img src="logo.svg" alt="Logo" id="logo" />
+        <h2>Carbon Sink Tracker</h2>
+      </div>
       <label
         ><b>District:</b>
-        <!-- <select id="district"></select>  -->
       </label>
       <div id="district-checkboxes"></div>
 
-      <!-- <label
-        >Year:
-        <select id="year"></select>
-      </label> -->
       <label
         ><b>Filter:</b>
         <br />
         <select id="lulcFilter">
           <option value="all">LULC</option>
           <option value="forest">Carbon Sink</option>
-          <option value="wetland">Wetland</option>
         </select>
       </label>
       <label for="yearSlider"
@@ -46,7 +61,7 @@
           <input
             type="range"
             id="yearSlider"
-            min="2015"
+            min="2011"
             max="2022"
             step="1"
             value="2020"
@@ -55,36 +70,112 @@
         </div></label
       >
       <div class="button-row">
-        <button id="submitBtn" onclick="loadLULC()" style="width: 49%">
+        <button id="submitBtn" onclick="loadLULC()" class="load-btn">
           Load
         </button>
-        <button
-          onclick="clearLULC()"
-          style="width: 49%; background-color: #e46872"
-        >
+        <button onclick="clearLULC()" class="clear-btn">
           Clear
         </button>
       </div>
       <div class="button-row">
-        <button
-          onclick="downloadLULC()"
-          style="width: 100%; background-color: #76e2bb"
-        >
+        <button onclick="downloadLULC()" class="download-btn">
           Download
         </button>
       </div>
-
+      
+      <!-- Animation Controls -->
+      <div class="animation-controls">
+        <h3>Carbon Sink Timeline</h3>
+        <div class="animation-row">
+          <button id="initAnimationBtn" onclick="initializeAnimation()" class="init-btn">🚀 Load Animation</button>
+          <button id="playBtn" onclick="toggleAnimation()" class="play-btn" style="display: none;">▶️ Play</button>
+          <span id="currentYear" style="display: none;">2022</span>
+        </div>
+        <div class="year-slider-container" style="display: none;">
+          <input type="range" id="animationSlider" min="2015" max="2022" value="2022" step="1">
+        </div>
+      </div>
+      
       <br />
     </div>
     <div id="map"></div>
+    
+    <!-- Right Slider Panel -->
+    <div id="right-panel" class="right-panel">
+      <div class="panel-header">
+        <h3>Analytics</h3>
+        <button id="close-panel" class="close-btn">&times;</button>
+      </div>
+      <div class="panel-content">
+        <div class="graph-toggles">
+          <button class="graph-toggle active" data-graph="1">State</button>
+          <button class="graph-toggle" data-graph="2">District</button>
+        </div>
+        
+        <!-- State Section -->
+        <div class="graph-section active" id="state-section">
+          <!-- State Graph Toggle Buttons -->
+          <div class="state-graph-toggles">
+            <button class="state-graph-toggle active" data-state-graph="forest">Forest</button>
+            <button class="state-graph-toggle" data-state-graph="wetland">Wetland</button>
+            <button class="state-graph-toggle" data-state-graph="total">Total</button>
+          </div>
+          
+          <div class="graphs-container">
+            <div class="graph-chart-container active" id="state-forest-container">
+              <h4>Forest CO2e Emissions</h4>
+              <canvas id="stateForestChartCanvas"></canvas>
+            </div>
+            <div class="graph-chart-container" id="state-wetland-container">
+              <h4>Wetland CO2e Emissions</h4>
+              <canvas id="stateWetlandChartCanvas"></canvas>
+            </div>
+            <div class="graph-chart-container" id="state-total-container">
+              <h4>Total CO2e Emissions (Forest + Wetland)</h4>
+              <canvas id="stateCombinationChartCanvas"></canvas>
+            </div>
+          </div>
+        </div>
+        
+        <!-- District Section -->
+        <div class="graph-section" id="district-section">
+          <!-- District Graph Toggle Buttons -->
+          <div class="district-graph-toggles">
+            <button class="district-graph-toggle active" data-district-graph="forest">Forest</button>
+            <button class="district-graph-toggle" data-district-graph="wetland">Wetland</button>
+            <button class="district-graph-toggle" data-district-graph="total">Total</button>
+          </div>
+          
+          <div class="graphs-container">
+            <div class="graph-chart-container active" id="district-forest-container">
+              <h4>Forest CO2e Emissions by District</h4>
+              <canvas id="districtForestChartCanvas"></canvas>
+            </div>
+            <div class="graph-chart-container" id="district-wetland-container">
+              <h4>Wetland CO2e Emissions by District</h4>
+              <canvas id="districtWetlandChartCanvas"></canvas>
+            </div>
+            <div class="graph-chart-container" id="district-total-container">
+              <h4>Total CO2e Emissions by District (Forest + Wetland)</h4>
+              <canvas id="districtCombinationChartCanvas"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Chart Icon Button -->
+    <button id="chart-icon" class="chart-icon">📊</button>
+    
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
-    <!-- Configure API base URL for production (Render); remove or change for local dev -->
+    <!-- Configure API base URL -->
     <script>
-      window.API_BASE = 'https://carbon-sink-tracker-1.onrender.com';
+      // Set API base URL - change this for production deployment
+      window.API_BASE = 'http://localhost:8000';
     </script>
-    <script src="/static/main.js"></script>
+    <script src="main.js"></script>
   </body>
 </html>

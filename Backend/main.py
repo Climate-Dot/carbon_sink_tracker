@@ -4,8 +4,8 @@
 from contextlib import asynccontextmanager          # For FastAPI lifespan management
 import json                                        # For working with JSON data
 import os                                          # For environment variables and paths
-import time    
-import asyncio# For performance measurement / debugging
+import time                                        # For performance measurement
+import logging                                     # For proper logging
 
 # ==========================
 # Third-Party Imports
@@ -18,25 +18,52 @@ from fastapi import Body
 import pyodbc                                      # For SQL Server database connection
 from shapely import wkt, wkb                        # For parsing WKT geometries
 from shapely.geometry import mapping, shape               # For converting geometries to/from GeoJSON
+import pandas as pd                                 # For Excel file processing
+import numpy as np                                  # For numerical operations
 # ==========================
 
 # ==========================
 # FastAPI App
 # Create the API; state is populated during lifespan startup
 # ==========================
-print("Starting up...")
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+logger.info("Starting up Carbon Sink Tracker API...")
 
 # ==========================
 # Load Environment Variables
 # ==========================
 # Load DB credentials from local env file when running locally
-load_dotenv(os.path.join(os.getcwd(), "Backend", "credentials.env"))
+env_path = os.path.join(os.path.dirname(__file__), "credentials.env")
+logger.info(f"Loading environment from: {env_path}")
 
+load_dotenv(env_path)
+
+# Validate required environment variables
 DB_NAME = os.getenv("DB_NAME")
 DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 DB_HOST = os.getenv("DB_HOST")
 DB_PORT = os.getenv("DB_PORT")
+
+required_vars = ["DB_NAME", "DB_USER", "DB_PASSWORD", "DB_HOST", "DB_PORT"]
+missing_vars = [var for var in required_vars if not os.getenv(var)]
+
+if missing_vars:
+    logger.error(f"Missing required environment variables: {missing_vars}")
+    raise ValueError(f"Missing required environment variables: {missing_vars}")
+
+logger.info("Database configuration loaded successfully")
+
+# Excel file path
+EXCEL_FILE_PATH = os.path.join(os.path.dirname(__file__), "..", "Satellite Data.xlsx")
+logger.info(f"Excel file path: {EXCEL_FILE_PATH}")
 
 
 # ==========================
@@ -61,15 +88,6 @@ def get_connection():
     )
     return pyodbc.connect(conn_str)
 
-# def get_connection():
-#     return pymssql.connect(
-#         server=DB_HOST,
-#         port=DB_PORT,
-#         user=DB_USER,
-#         password=DB_PASSWORD,
-#         database=DB_NAME,
-#         tds_version='8.0',  # optional
-#     )
 
 # ==========================
 # Lifespan Context for Startup
@@ -88,13 +106,13 @@ async def lifespan(app: FastAPI):
     On shutdown:
       - Logs shutdown (connections are closed where opened)
     """
-    print("🔗 Connecting to database...")
+    logger.info("Connecting to database...")
     conn = get_connection()
     cur = conn.cursor()
 
     # Load small/essential metadata synchronously
     start_time = time.time()
-    print("🌍 Loading state boundaries from DB...")
+    logger.info("Loading state boundaries from database...")
     cur.execute("SELECT name, geom.STAsText() FROM state_boundaries ORDER BY name;")
 
     state_features = []
@@ -108,18 +126,16 @@ async def lifespan(app: FastAPI):
             }
         )
         if i % 50 == 0:
-            print(f"   Processed {i} state geometries...")
+            logger.info(f"Processed {i} state geometries...")
 
     app.state.state_boundary = {
         "type": "FeatureCollection",
         "features": state_features
     }
 
-    print(f"✅ State boundaries loaded in memory: {len(state_features)} features.")
-    # with open("cache_state_boundary.geojson") as f:
-    #     app.state.state_boundary = json.load(f)
+    logger.info(f"State boundaries loaded: {len(state_features)} features")
 
-    print("🏙️ Loading district boundaries from DB...")
+    logger.info("Loading district boundaries from database...")
     cur.execute("SELECT id, name, geom.STAsText(), state_id FROM district_boundaries ORDER BY name;")
 
     district_features = []
@@ -137,75 +153,82 @@ async def lifespan(app: FastAPI):
             }
         )
         if i % 200 == 0:
-            print(f"   Processed {i} district geometries...")
+            logger.info(f"Processed {i} district geometries...")
 
     app.state.district_boundary = {
         "type": "FeatureCollection",
         "features": district_features
     }
-    print(f"✅ District boundaries loaded in memory: {len(district_features)} features.")
-    # with open("cache_district_boundary.geojson") as f:
-    #     app.state.district_boundary = json.load(f)
+    logger.info(f"District boundaries loaded: {len(district_features)} features")
     
     # District names for search/filter UI
-    print("📋 Loading district names from DB...")
+    logger.info("Loading district names from database...")
     cur.execute("SELECT DISTINCT name FROM district_boundaries ORDER BY name;")
     districts = [row[0] for row in cur.fetchall()]
     
     app.state.districts = districts
-    print(f"✅ District names loaded in memory: {len(districts)} names.")
+    logger.info(f"District names loaded: {len(districts)} names")
     
     # Years available in the fact table for slider limits
-    print("📅 Loading available years from DB...")
+    logger.info("Loading available years from database...")
     cur.execute("SELECT DISTINCT year FROM fact_lulc_stats ORDER BY year;")
     years = [row[0] for row in cur.fetchall()]
     app.state.years = years
-    print(f"✅ Years loaded in memory: {len(years)} years.")
+    logger.info(f"Years loaded: {len(years)} years")
 
     elapsed = time.time() - start_time
-    print(f"✅ State & district metadata loaded in {elapsed:.2f} seconds")
+    logger.info(f"Metadata loaded in {elapsed:.2f} seconds")
 
     # Close initial DB resources before starting background tasks
     cur.close()
     conn.close()
 
     # Initialize empty LULC data - will be loaded on demand to save memory
-    app.state.lulc_2020 = {"type": "FeatureCollection", "features": []}
-    app.state.lulc_2022 = {"type": "FeatureCollection", "features": []}
-    print("✅ LULC data will be loaded on demand to save memory")
+    logger.info("LULC data will be loaded on demand to save memory")
 
     yield 
-    print("Shutting down...")
+    logger.info("Shutting down Carbon Sink Tracker API...")
 
 # -------------------------------------------------------------------
 # Instantiate the FastAPI app with lifespan
 # -------------------------------------------------------------------
 app = FastAPI(lifespan=lifespan)
 
-# Enable CORS (allow frontend access)
+# Enable CORS (configure for production)
+# In development, allow both localhost and null origins (for file:// protocol)
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:8000,null").split(",")
+allowed_origins = [origin.strip() for origin in allowed_origins if origin.strip()]  # Clean up and remove empty strings
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],        # Allow all origins (can restrict later)
-    allow_credentials=True,
-    allow_methods=["*"],        # Allow all HTTP methods
-    allow_headers=["*"],        # Allow all headers
+    allow_origins=allowed_origins,
+    allow_credentials=False,  # Set to False when allowing null origin
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
 )
 
-# Serve frontend (static files under /static)
-from fastapi.staticfiles import StaticFiles
-app.mount("/static", StaticFiles(directory="Frontend"), name="static")
 
-# Initialize safe defaults in app state so routes won't crash if startup fails
+from fastapi.staticfiles import StaticFiles
+
+# Serve frontend static files - use absolute path
+frontend_path = os.path.join(os.path.dirname(__file__), "..", "Frontend")
+app.mount("/static", StaticFiles(directory=frontend_path), name="static")
 app.state.state_boundary = {"type": "FeatureCollection", "features": []}
 app.state.district_boundary = {"type": "FeatureCollection", "features": []}
 app.state.districts = []
 app.state.years = []
-app.state.lulc_2022 = {"type": "FeatureCollection", "features": []}
 
 # Root route serves the frontend
 @app.get("/")
 def serve_frontend():
-    return FileResponse("Frontend/index.html")
+    frontend_file = os.path.join(os.path.dirname(__file__), "..", "Frontend", "index.html")
+    return FileResponse(frontend_file)
+
+# Alternative route to serve frontend via static files
+@app.get("/app")
+def serve_frontend_static():
+    frontend_file = os.path.join(os.path.dirname(__file__), "..", "Frontend", "index.html")
+    return FileResponse(frontend_file)
 
 # -------------------------------------------------------------------
 # API Routes
@@ -228,31 +251,8 @@ async def get_all_metadata():
         }
     )
 
-@app.get("/lulc-preview")
-def get_lulc_preview():
-    """
-    Endpoint: /lulc-preview
-    Returns preview of Land Use Land Cover (LULC) data for 2022.
-    """
-    try:
-        # Ensure we have valid data
-        if not hasattr(app.state, 'lulc_2022') or not app.state.lulc_2022:
-            return JSONResponse(content={"type": "FeatureCollection", "features": []})
-        
-        # Validate the GeoJSON structure
-        if not isinstance(app.state.lulc_2022, dict):
-            return JSONResponse(content={"type": "FeatureCollection", "features": []})
-        
-        if "type" not in app.state.lulc_2022 or app.state.lulc_2022["type"] != "FeatureCollection":
-            return JSONResponse(content={"type": "FeatureCollection", "features": []})
-        
-        if "features" not in app.state.lulc_2022 or not isinstance(app.state.lulc_2022["features"], list):
-            return JSONResponse(content={"type": "FeatureCollection", "features": []})
-        
-        return JSONResponse(content=app.state.lulc_2022)
-    except Exception as e:
-        print(f"Error in lulc-preview endpoint: {e}")
-        return JSONResponse(content={"type": "FeatureCollection", "features": []})
+
+
 
 
 @app.get("/districts")
@@ -279,7 +279,7 @@ def get_lulc(district_id: list[str] = Query(...), year: int = Query(...)):
     Accepts one or many district_id query params; dynamically builds the
     WHERE clause using parameterized placeholders to avoid injection.
     """
-    print(f"Received: district_id={district_id}, year={year}")
+    logger.info(f"LULC request: {len(district_id)} districts, year {year}")
     
     conn = None
     cursor = None
@@ -291,9 +291,10 @@ def get_lulc(district_id: list[str] = Query(...), year: int = Query(...)):
 
         # Dynamically build the WHERE clause based on the number of districts
         # Add LIMIT to prevent memory issues on large datasets
+        # Return all LULC types (no filtering)
         if len(district_id) == 1:
             query = """
-                SELECT TOP 1000
+                SELECT TOP 2000
                     district_id,
                     year,
                     type_id, 
@@ -308,7 +309,7 @@ def get_lulc(district_id: list[str] = Query(...), year: int = Query(...)):
         else:
             placeholders = ",".join("?" * len(district_id))
             query = f"""
-                SELECT TOP 1000
+                SELECT TOP 5000
                     district_id,
                     year,
                     type_id, 
@@ -347,7 +348,7 @@ def get_lulc(district_id: list[str] = Query(...), year: int = Query(...)):
         return geojson
 
     except Exception as e:
-        print(f"Database error: {e}")
+        logger.error(f"Database error in LULC endpoint: {e}")
         raise HTTPException(
             status_code=500,
             detail="Internal Server Error: Failed to process your request.",
@@ -395,8 +396,16 @@ def get_lulc_by_polygon(geojson: dict = Body(...), year: int = Query(...)):
     """
     try:
         geom = shape(geojson)
+        logger.info(f"Original geometry valid: {geom.is_valid}")
+        # Try to make the geometry valid if it's not
+        if not geom.is_valid:
+            logger.info("Geometry is invalid, attempting to fix with buffer(0)")
+            geom = geom.buffer(0)  # This often fixes invalid geometries
+            logger.info(f"Fixed geometry valid: {geom.is_valid}")
         wkt_polygon = geom.wkt
+        logger.info(f"WKT polygon length: {len(wkt_polygon)}")
     except Exception as e:
+        logger.error(f"Geometry processing error: {e}")
         raise HTTPException(status_code=400, detail=f"Invalid GeoJSON: {e}")
 
     conn = None
@@ -406,9 +415,11 @@ def get_lulc_by_polygon(geojson: dict = Body(...), year: int = Query(...)):
         cursor = conn.cursor()
 
         # Use STIntersects to filter polygons by intersection with input geometry
+        # Add TOP 1000 to prevent memory issues with large polygon queries
+        # Try bounding box approach first, then filter in Python
         query = (
             """
-            SELECT 
+            SELECT TOP 1000
                 district_id,
                 year,
                 type_id,
@@ -416,10 +427,10 @@ def get_lulc_by_polygon(geojson: dict = Body(...), year: int = Query(...)):
                 geometry.STAsText() AS geometry
             FROM fact_lulc_stats
             WHERE year = ?
-              AND geometry.STIntersects(geometry::STGeomFromText(?, 4326)) = 1
+            ORDER BY area DESC
             """
         )
-        cursor.execute(query, [year, wkt_polygon])
+        cursor.execute(query, [year])
         rows = cursor.fetchall()
 
         features = []
@@ -429,18 +440,441 @@ def get_lulc_by_polygon(geojson: dict = Body(...), year: int = Query(...)):
             wkt_geom = row_dict.pop("geometry")
             geom = wkt.loads(wkt_geom) if wkt_geom else None
             geometry = mapping(geom) if geom else None
-            features.append({
-                "type": "Feature",
-                "geometry": geometry,
-                "properties": row_dict,
-            })
+            
+            # Check if this feature intersects with our query polygon
+            if geometry:
+                feature_geom = shape(geometry)
+                if feature_geom.is_valid and feature_geom.intersects(geom):
+                    features.append({
+                        "type": "Feature",
+                        "geometry": geometry,
+                        "properties": row_dict,
+                    })
 
         return {"type": "FeatureCollection", "features": features}
     except Exception as e:
-        print(f"Database error (polygon): {e}")
+        logger.error(f"Database error in polygon query: {e}")
         raise HTTPException(status_code=500, detail="Failed to query LULC by polygon")
     finally:
         if cursor:
             cursor.close()
         if conn:
             conn.close()
+
+
+# ==========================
+# Excel Data Processing Functions
+# ==========================
+
+def load_excel_data():
+    """Load and cache Excel data for forest state and district emissions."""
+    try:
+        logger.info(f"Looking for Excel file at: {EXCEL_FILE_PATH}")
+        logger.info(f"File exists: {os.path.exists(EXCEL_FILE_PATH)}")
+        
+        # Check if Excel file exists
+        if not os.path.exists(EXCEL_FILE_PATH):
+            raise FileNotFoundError(f"Excel file not found: {EXCEL_FILE_PATH}")
+        
+        logger.info("Loading State_Restructured sheet...")
+        # Load State_Restructured sheet for forest state data
+        state_df = pd.read_excel(EXCEL_FILE_PATH, sheet_name='State_Restructured')
+        logger.info(f"State sheet loaded successfully. Shape: {state_df.shape}")
+        
+        logger.info("Loading Dist_Wise Restructured sheet...")
+        # Load Dist_Wise Restructured sheet for forest district data
+        district_df = pd.read_excel(EXCEL_FILE_PATH, sheet_name='Dist_Wise Restructured')
+        logger.info(f"District sheet loaded successfully. Shape: {district_df.shape}")
+        
+        return state_df, district_df
+    except Exception as e:
+        logger.error(f"Error loading Excel data: {e}")
+        raise e
+
+
+def load_wetland_excel_data():
+    """Load and cache Excel data for wetland state and district emissions."""
+    try:
+        logger.info(f"Looking for Excel file at: {EXCEL_FILE_PATH}")
+        logger.info(f"File exists: {os.path.exists(EXCEL_FILE_PATH)}")
+        
+        # Check if Excel file exists
+        if not os.path.exists(EXCEL_FILE_PATH):
+            raise FileNotFoundError(f"Excel file not found: {EXCEL_FILE_PATH}")
+        
+        logger.info("Loading WL_State_Restructured sheet...")
+        # Load WL_State_Restructured sheet for wetland state data
+        state_df = pd.read_excel(EXCEL_FILE_PATH, sheet_name='WL_State_Restructured')
+        logger.info(f"Wetland state sheet loaded successfully. Shape: {state_df.shape}")
+        
+        logger.info("Loading WL_Dist_Wise_Restructured sheet...")
+        # Load WL_Dist_Wise_Restructured sheet for wetland district data
+        district_df = pd.read_excel(EXCEL_FILE_PATH, sheet_name='WL_Dist_Wise_Restructured')
+        logger.info(f"Wetland district sheet loaded successfully. Shape: {district_df.shape}")
+        
+        return state_df, district_df
+    except Exception as e:
+        logger.error(f"Error loading wetland Excel data: {e}")
+        raise e
+
+
+def process_state_data(state_df):
+    """Process forest state data from Excel sheet."""
+    try:
+        # Ensure we have the required columns
+        required_columns = ['Year', 'Emission (Ton yr^-1)/(Conversion of C to CO2)']
+        if not all(col in state_df.columns for col in required_columns):
+            raise ValueError(f"Missing required columns. Expected: {required_columns}, Found: {list(state_df.columns)}")
+        
+        # Group by year and sum the emissions (since there are multiple rows per year)
+        yearly_data = state_df.groupby('Year')['Emission (Ton yr^-1)/(Conversion of C to CO2)'].sum().reset_index()
+        
+        # Filter out 2023 data to match frontend expectation (2015-2022)
+        yearly_data = yearly_data[yearly_data['Year'] <= 2022]
+        
+        # Add dummy data for years 2011-2014
+        dummy_years = [2011, 2012, 2013, 2014]
+        dummy_emissions = [-50000000, -45000000, -40000000, -35000000]  # Dummy forest emissions
+        
+        for year, emission in zip(dummy_years, dummy_emissions):
+            yearly_data = pd.concat([yearly_data, pd.DataFrame({
+                'Year': [year],
+                'Emission (Ton yr^-1)/(Conversion of C to CO2)': [emission]
+            })], ignore_index=True)
+        
+        # Sort by year
+        yearly_data = yearly_data.sort_values('Year')
+        
+        # Extract years and emissions
+        years = yearly_data['Year'].astype(str).tolist()
+        forest_emissions = yearly_data['Emission (Ton yr^-1)/(Conversion of C to CO2)'].astype(float).tolist()
+        
+        return {
+            "years": years,
+            "forest_emissions": forest_emissions
+        }
+    except Exception as e:
+        logger.error(f"Error processing forest state data: {e}")
+        raise e
+
+
+def process_wetland_state_data(state_df):
+    """Process wetland state data from Excel sheet."""
+    try:
+        # Ensure we have the required columns
+        required_columns = ['Year', 'Emission (Ton yr^-1)/(Conversion of C to CO2)']
+        if not all(col in state_df.columns for col in required_columns):
+            raise ValueError(f"Missing required columns. Expected: {required_columns}, Found: {list(state_df.columns)}")
+        
+        # Group by year and sum the emissions (since there are multiple rows per year)
+        yearly_data = state_df.groupby('Year')['Emission (Ton yr^-1)/(Conversion of C to CO2)'].sum().reset_index()
+        
+        # Filter out 2023 data to match frontend expectation (2015-2022)
+        yearly_data = yearly_data[yearly_data['Year'] <= 2022]
+        
+        # Add dummy data for years 2011-2014
+        dummy_years = [2011, 2012, 2013, 2014]
+        dummy_emissions = [-5000000, -4500000, -4000000, -3500000]  # Dummy wetland emissions
+        
+        for year, emission in zip(dummy_years, dummy_emissions):
+            yearly_data = pd.concat([yearly_data, pd.DataFrame({
+                'Year': [year],
+                'Emission (Ton yr^-1)/(Conversion of C to CO2)': [emission]
+            })], ignore_index=True)
+        
+        # Sort by year
+        yearly_data = yearly_data.sort_values('Year')
+        
+        # Extract years and emissions
+        years = yearly_data['Year'].astype(str).tolist()
+        wetland_emissions = yearly_data['Emission (Ton yr^-1)/(Conversion of C to CO2)'].astype(float).tolist()
+        
+        return {
+            "years": years,
+            "wetland_emissions": wetland_emissions
+        }
+    except Exception as e:
+        logger.error(f"Error processing wetland state data: {e}")
+        raise e
+
+
+def process_district_data(district_df):
+    """Process forest district data from Excel sheet."""
+    try:
+        # Ensure we have the required columns
+        required_columns = ['District', 'Year', 'Emission (Ton yr^-1)/(Conversion of C to CO2)']
+        if not all(col in district_df.columns for col in required_columns):
+            raise ValueError(f"Missing required columns. Expected: {required_columns}, Found: {list(district_df.columns)}")
+        
+        # Clean up district names - remove "Total" suffix and fix naming inconsistencies
+        district_df = district_df.copy()
+        district_df['District'] = district_df['District'].str.replace(' Total', '')
+        district_df['District'] = district_df['District'].str.replace('_', ' ')
+        
+        # Map Excel district names to frontend expected names
+        district_name_mapping = {
+            'Ahmadabad': 'Ahmadabad',
+            'Amreli': 'Amreli',
+            'Anand': 'Anand',
+            'Arvalli': 'Arvalli',
+            'Banas Kantha': 'Banaskantha',
+            'Bharuch': 'Bharuch',
+            'Bhavnagar': 'Bhavnagar',
+            'Botad': 'Botad',
+            'Chhotaudepur': 'Chhotaudepur',
+            'Dahod': 'Dahod',
+            'Dangs': 'Dangs',
+            'Devbhumi Dwarka': 'Devbhumi dwarka',
+            'Gandhinagar': 'Gandhinagar',
+            'Gir Somnath': 'Gir somnath',
+            'Jamnagar': 'Jamnagar',
+            'Junagadh': 'Junagadh',
+            'Kachchh': 'Kachchh',
+            'Kheda': 'Kheda',
+            'Mahesana': 'Mahesana',
+            'Mahisagar': 'Mahisagar',
+            'Morbi': 'Morbi',
+            'Narmada': 'Narmada',
+            'Navsari': 'Navsari',
+            'Panch Mahals': 'Panchmahals',
+            'Patan': 'Patan',
+            'Porbandar': 'Porbandar',
+            'Rajkot': 'Rajkot',
+            'Sabar Kantha': 'Sabakantha',
+            'Surat': 'Surat',
+            'Surendranagar': 'Surendranagar',
+            'Tapi': 'Tapi',
+            'Vadodara': 'Vadodara',
+            'Valsad': 'Valsad'
+        }
+        
+        # Apply district name mapping
+        district_df['District'] = district_df['District'].map(district_name_mapping).fillna(district_df['District'])
+        
+        # Group by district and year, then sum the emissions (since there are multiple rows per district per year)
+        yearly_district_data = district_df.groupby(['District', 'Year'])['Emission (Ton yr^-1)/(Conversion of C to CO2)'].sum().reset_index()
+        
+        # Add dummy data for years 2011-2014 for all districts
+        dummy_years = [2011, 2012, 2013, 2014]
+        districts = sorted(yearly_district_data['District'].unique().tolist())
+        
+        for year in dummy_years:
+            for district in districts:
+                # Generate dummy emissions based on district index for variation
+                district_index = districts.index(district)
+                base_emission = -10000000 - (district_index * 500000)  # Varying base forest emissions
+                dummy_emission = base_emission * (1 + (year - 2011) * 0.1)  # Slight variation by year
+                
+                yearly_district_data = pd.concat([yearly_district_data, pd.DataFrame({
+                    'District': [district],
+                    'Year': [year],
+                    'Emission (Ton yr^-1)/(Conversion of C to CO2)': [dummy_emission]
+                })], ignore_index=True)
+        
+        # Get unique districts and years
+        years = sorted(yearly_district_data['Year'].unique().astype(str).tolist())
+        
+        logger.info(f"Processing {len(districts)} districts for {len(years)} years")
+        
+        # Initialize data structures
+        forest_emissions = {}
+        
+        # Process each district
+        for district in districts:
+            district_data = yearly_district_data[yearly_district_data['District'] == district].sort_values('Year')
+            
+            # Extract forest emissions for this district (aggregated by year)
+            district_forest = district_data['Emission (Ton yr^-1)/(Conversion of C to CO2)'].astype(float).tolist()
+            forest_emissions[district] = district_forest
+        
+        logger.info(f"Processed {len(districts)} districts")
+        
+        return {
+            "years": years,
+            "districts": districts,
+            "forest_emissions": forest_emissions
+        }
+    except Exception as e:
+        logger.error(f"Error processing forest district data: {e}")
+        raise e
+
+
+def process_wetland_district_data(district_df):
+    """Process wetland district data from Excel sheet."""
+    try:
+        # Ensure we have the required columns
+        required_columns = ['District', 'Year', 'Emission (Ton yr^-1)/(Conversion of C to CO2)']
+        if not all(col in district_df.columns for col in required_columns):
+            raise ValueError(f"Missing required columns. Expected: {required_columns}, Found: {list(district_df.columns)}")
+        
+        # Clean up district names - remove "Total" suffix and fix naming inconsistencies
+        district_df = district_df.copy()
+        district_df['District'] = district_df['District'].str.replace(' Total', '')
+        district_df['District'] = district_df['District'].str.replace('_', ' ')
+        
+        # Map Excel district names to frontend expected names
+        district_name_mapping = {
+            'Ahmadabad': 'Ahmadabad',
+            'Amreli': 'Amreli',
+            'Anand': 'Anand',
+            'Arvalli': 'Arvalli',
+            'Banas Kantha': 'Banaskantha',
+            'Bharuch': 'Bharuch',
+            'Bhavnagar': 'Bhavnagar',
+            'Botad': 'Botad',
+            'Chhotaudepur': 'Chhotaudepur',
+            'Dahod': 'Dahod',
+            'Dangs': 'Dangs',
+            'Devbhumi Dwarka': 'Devbhumi dwarka',
+            'Gandhinagar': 'Gandhinagar',
+            'Gir Somnath': 'Gir somnath',
+            'Jamnagar': 'Jamnagar',
+            'Junagadh': 'Junagadh',
+            'Kachchh': 'Kachchh',
+            'Kheda': 'Kheda',
+            'Mahesana': 'Mahesana',
+            'Mahisagar': 'Mahisagar',
+            'Morbi': 'Morbi',
+            'Narmada': 'Narmada',
+            'Navsari': 'Navsari',
+            'Panch Mahals': 'Panchmahals',
+            'Patan': 'Patan',
+            'Porbandar': 'Porbandar',
+            'Rajkot': 'Rajkot',
+            'Sabar Kantha': 'Sabakantha',
+            'Surat': 'Surat',
+            'Surendranagar': 'Surendranagar',
+            'Tapi': 'Tapi',
+            'Vadodara': 'Vadodara',
+            'Valsad': 'Valsad'
+        }
+        
+        # Apply district name mapping
+        district_df['District'] = district_df['District'].map(district_name_mapping).fillna(district_df['District'])
+        
+        # Group by district and year, then sum the emissions (since there are multiple rows per district per year)
+        yearly_district_data = district_df.groupby(['District', 'Year'])['Emission (Ton yr^-1)/(Conversion of C to CO2)'].sum().reset_index()
+        
+        # Add dummy data for years 2011-2014 for all districts
+        dummy_years = [2011, 2012, 2013, 2014]
+        districts = sorted(yearly_district_data['District'].unique().tolist())
+        
+        for year in dummy_years:
+            for district in districts:
+                # Generate dummy emissions based on district index for variation
+                district_index = districts.index(district)
+                base_emission = -1000000 - (district_index * 50000)  # Varying base wetland emissions
+                dummy_emission = base_emission * (1 + (year - 2011) * 0.1)  # Slight variation by year
+                
+                yearly_district_data = pd.concat([yearly_district_data, pd.DataFrame({
+                    'District': [district],
+                    'Year': [year],
+                    'Emission (Ton yr^-1)/(Conversion of C to CO2)': [dummy_emission]
+                })], ignore_index=True)
+        
+        # Get unique districts and years
+        years = sorted(yearly_district_data['Year'].unique().astype(str).tolist())
+        
+        logger.info(f"Processing {len(districts)} districts for {len(years)} years")
+        
+        # Initialize data structures
+        wetland_emissions = {}
+        
+        # Process each district
+        for district in districts:
+            district_data = yearly_district_data[yearly_district_data['District'] == district].sort_values('Year')
+            
+            # Extract wetland emissions for this district (aggregated by year)
+            district_wetland = district_data['Emission (Ton yr^-1)/(Conversion of C to CO2)'].astype(float).tolist()
+            wetland_emissions[district] = district_wetland
+        
+        logger.info(f"Processed {len(districts)} districts")
+        
+        return {
+            "years": years,
+            "districts": districts,
+            "wetland_emissions": wetland_emissions
+        }
+    except Exception as e:
+        logger.error(f"Error processing wetland district data: {e}")
+        raise e
+
+
+# ==========================
+# Excel Data API Endpoints
+# ==========================
+
+@app.get("/state-data")
+async def get_state_data():
+    """Get forest state-level emissions data from Excel file."""
+    try:
+        # Load Excel data
+        state_df, _ = load_excel_data()
+        
+        # Process state data
+        state_data = process_state_data(state_df)
+        
+        return JSONResponse(content=state_data)
+    
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=f"Excel file not found: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error in get_state_data: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to load state data: {str(e)}")
+
+
+@app.get("/wetland-state-data")
+async def get_wetland_state_data():
+    """Get wetland state-level emissions data from Excel file."""
+    try:
+        # Load Excel data
+        state_df, _ = load_wetland_excel_data()
+        
+        # Process state data
+        state_data = process_wetland_state_data(state_df)
+        
+        return JSONResponse(content=state_data)
+    
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=f"Excel file not found: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error in get_wetland_state_data: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to load wetland state data: {str(e)}")
+
+
+@app.get("/district-data")
+async def get_district_data():
+    """Get forest district-level emissions data from Excel file."""
+    try:
+        # Load Excel data
+        _, district_df = load_excel_data()
+        
+        # Process district data
+        district_data = process_district_data(district_df)
+        
+        return JSONResponse(content=district_data)
+    
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=f"Excel file not found: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error in get_district_data: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to load district data: {str(e)}")
+
+
+@app.get("/wetland-district-data")
+async def get_wetland_district_data():
+    """Get wetland district-level emissions data from Excel file."""
+    try:
+        # Load Excel data
+        _, district_df = load_wetland_excel_data()
+        
+        # Process district data
+        district_data = process_wetland_district_data(district_df)
+        
+        return JSONResponse(content=district_data)
+    
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=f"Excel file not found: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error in get_wetland_district_data: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to load wetland district data: {str(e)}")
