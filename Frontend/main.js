@@ -821,26 +821,33 @@ async function generateSampleDistrictData() {
 // API data loading functions
 async function loadStateDataFromAPI() {
   try {
-    const response = await fetch(`${API_BASE}/state-data`);
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    // Fetch forest and wetland data separately
+    const [forestResponse, wetlandResponse] = await Promise.all([
+      fetch(`${API_BASE}/state-data`),
+      fetch(`${API_BASE}/wetland-state-data`)
+    ]);
     
-    const data = await response.json();
+    if (!forestResponse.ok) throw new Error(`HTTP error! status: ${forestResponse.status}`);
+    if (!wetlandResponse.ok) throw new Error(`HTTP error! status: ${wetlandResponse.status}`);
+    
+    const forestData = await forestResponse.json();
+    const wetlandData = await wetlandResponse.json();
     
     // Process state data from API
     stateData = {
       state_forest: {
-        labels: data.years || ['2011', '2012', '2013', '2014', '2015', '2016', '2017', '2018', '2019', '2020', '2021', '2022'],
-        data: data.forest_emissions || []
+        labels: forestData.years || ['2011', '2012', '2013', '2014', '2015', '2016', '2017', '2018', '2019', '2020', '2021', '2022'],
+        data: forestData.forest_emissions || []
       },
       state_wetland: {
-        labels: data.years || ['2011', '2012', '2013', '2014', '2015', '2016', '2017', '2018', '2019', '2020', '2021', '2022'],
-        data: data.wetland_emissions || []
+        labels: wetlandData.years || ['2011', '2012', '2013', '2014', '2015', '2016', '2017', '2018', '2019', '2020', '2021', '2022'],
+        data: wetlandData.wetland_emissions || []
       },
       state_combination: {
-        labels: data.years || ['2011', '2012', '2013', '2014', '2015', '2016', '2017', '2018', '2019', '2020', '2021', '2022'],
+        labels: forestData.years || ['2011', '2012', '2013', '2014', '2015', '2016', '2017', '2018', '2019', '2020', '2021', '2022'],
         data: {
-          forest: data.forest_emissions || [],
-          wetland: data.wetland_emissions || []
+          forest: forestData.forest_emissions || [],
+          wetland: wetlandData.wetland_emissions || []
         }
       }
     };
@@ -869,13 +876,20 @@ async function loadStateDataFromAPI() {
 
 async function loadDistrictDataFromAPI() {
   try {
-    const response = await fetch(`${API_BASE}/district-data`);
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    // Fetch forest and wetland data separately
+    const [forestResponse, wetlandResponse] = await Promise.all([
+      fetch(`${API_BASE}/district-data`),
+      fetch(`${API_BASE}/wetland-district-data`)
+    ]);
     
-    const data = await response.json();
+    if (!forestResponse.ok) throw new Error(`HTTP error! status: ${forestResponse.status}`);
+    if (!wetlandResponse.ok) throw new Error(`HTTP error! status: ${wetlandResponse.status}`);
+    
+    const forestData = await forestResponse.json();
+    const wetlandData = await wetlandResponse.json();
     
     // Process district data from API
-    const allDistricts = data.districts || [
+    const allDistricts = forestData.districts || [
       "Ahmedabad", "Amreli", "Anand", "Banaskantha", "Bharuch", "Bhavnagar", 
       "Chhotaudepur", "Dahod", "Dang", "Devbhumi Dwarka", "Gandhinagar", 
       "Gir Somnath", "Jamnagar", "Junagadh", "Kheda", "Kutch", "Mahisagar", 
@@ -890,18 +904,18 @@ async function loadDistrictDataFromAPI() {
       districts: allDistricts,
       districtColors: districtColors,
       district_forest: {
-        labels: data.years || ['2011', '2012', '2013', '2014', '2015', '2016', '2017', '2018', '2019', '2020', '2021', '2022'],
-        data: data.forest_emissions || {}
+        labels: forestData.years || ['2011', '2012', '2013', '2014', '2015', '2016', '2017', '2018', '2019', '2020', '2021', '2022'],
+        data: forestData.forest_emissions || {}
       },
       district_wetland: {
-        labels: data.years || ['2011', '2012', '2013', '2014', '2015', '2016', '2017', '2018', '2019', '2020', '2021', '2022'],
-        data: data.wetland_emissions || {}
+        labels: wetlandData.years || ['2011', '2012', '2013', '2014', '2015', '2016', '2017', '2018', '2019', '2020', '2021', '2022'],
+        data: wetlandData.wetland_emissions || {}
       },
       district_combination: {
-        labels: data.years || ['2011', '2012', '2013', '2014', '2015', '2016', '2017', '2018', '2019', '2020', '2021', '2022'],
+        labels: forestData.years || ['2011', '2012', '2013', '2014', '2015', '2016', '2017', '2018', '2019', '2020', '2021', '2022'],
         data: {
-          forest: data.forest_emissions || {},
-          wetland: data.wetland_emissions || {}
+          forest: forestData.forest_emissions || {},
+          wetland: wetlandData.wetland_emissions || {}
         }
       }
     };
