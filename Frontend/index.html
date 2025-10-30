@@ -6,7 +6,7 @@
     <meta name="description" content="Carbon Sink Tracker - Interactive Land Use Land Cover mapping and analytics for Gujarat" />
     <meta name="keywords" content="carbon sink, LULC, land use, land cover, Gujarat, mapping, analytics" />
     <meta name="author" content="Carbon Sink Tracker" />
-    <link rel="icon" type="image/svg+xml" href="/static/logo.svg" />
+    <link rel="icon" type="image/svg+xml" href="logo.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <!-- Leaflet CSS -->
@@ -17,35 +17,32 @@
       rel="stylesheet"
     />
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="/static/styles.css" />
+    <!-- Dynamic base path for static files -->
+    <script>
+      // Detect protocol and set base path (declare once, used globally)
+      window.isFileProtocol = window.location.protocol === 'file:';
+      window.STATIC_BASE = window.isFileProtocol ? '' : '/static';
+      // Load CSS with correct path
+      const cssPath = window.isFileProtocol ? 'styles.css' : '/static/styles.css';
+      document.write(`<link rel="stylesheet" href="${cssPath}" />`);
+    </script>
   </head>
   <body>
     <!-- Statistics Box -->
-    <div id="stats-box" class="stats-box">
-      <h4>Carbon Sink Area</h4>
-      <div class="stat-item">
-        <span class="stat-label">Forest:</span>
-        <span id="forest-area" class="stat-value">0 sq km</span>
-      </div>
-      <div class="stat-item">
-        <span class="stat-label">Wetland:</span>
-        <span id="wetland-area" class="stat-value">0 sq km</span>
-      </div>
-      <div class="stat-item">
-        <span class="stat-label">Total:</span>
-        <span id="total-area" class="stat-value">0 sq km</span>
-      </div>
-    </div>
+    <!-- (Removed Carbon Sink Area stats box) -->
     
     <div id="controls">
       <div id="header-container">
-        <img src="/static/logo.svg" alt="Logo" id="logo" />
+        <img id="logo" alt="Logo" />
         <h2>Carbon Sink Tracker</h2>
       </div>
-      <label
-        ><b>District:</b>
-      </label>
-      <div id="district-checkboxes"></div>
+      <div class="multiselect-wrapper">
+        <label><b>District:</b></label><br />
+        <button type="button" id="districtDropdownBtn">Select district(s)</button>
+        <div id="districtDropdown" class="multiselect-dropdown" style="display:none;">
+          <div id="district-checkboxes"></div>
+        </div>
+      </div>
 
       <label
         ><b>Filter:</b>
@@ -64,9 +61,9 @@
             min="2011"
             max="2022"
             step="1"
-            value="2020"
+            value="2022"
           />
-          <span id="yearDisplay">2020</span>
+          <span id="yearDisplay">2022</span>
         </div></label
       >
       <div class="button-row">
@@ -171,12 +168,24 @@
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
-    <!-- Configure API base URL -->
+    <!-- Configure API base URL (reusing static paths already set) -->
     <script>
-      // Set API base URL - empty string uses same origin (works for production)
-      // For local development, use 'http://localhost:8000'
-      window.API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
+      // Set API base URL using the already-defined window.isFileProtocol
+      window.API_BASE = window.isFileProtocol ? 'http://localhost:8000' : (window.location.hostname === 'localhost' ? 'http://localhost:8000' : "");
     </script>
-    <script src="/static/main.js"></script>
+    <script>
+      // Set logo path and load main.js
+      window.addEventListener('DOMContentLoaded', function() {
+        const logoImg = document.getElementById('logo');
+        if (logoImg) {
+          // Use relative path for file://, absolute path for server
+          logoImg.src = window.isFileProtocol ? 'logo.svg' : '/static/logo.svg';
+        }
+      });
+      // Dynamically load main.js with correct path
+      const script = document.createElement('script');
+      script.src = window.isFileProtocol ? 'main.js' : '/static/main.js';
+      document.body.appendChild(script);
+    </script>
   </body>
 </html>

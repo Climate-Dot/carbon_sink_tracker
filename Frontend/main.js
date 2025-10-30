@@ -96,6 +96,7 @@ async function populateDistrictCheckboxes() {
       checkbox.name = "district";
       checkbox.value = formattedName;
       checkbox.id = `district-${formattedName}`;
+      checkbox.classList.add('district-checkbox'); // ADDED
 
       const label = document.createElement("label");
       label.htmlFor = checkbox.id;
@@ -114,11 +115,67 @@ async function populateDistrictCheckboxes() {
     // Add event listeners to district checkboxes
     addDistrictCheckboxListeners();
     
+    // Immediately update the dropdown button label
+    updateDistrictDropdownBtnLabel();
+    
     // Refresh district charts after districts are loaded and default selections are made
     refreshDistrictCharts();
+    initDistrictDropdownMultiselect();
   } catch (error) {
     alert("Failed to load districts: " + error);
   }
+}
+
+// Helper to update the dropdown button label based on selected checkboxes
+function updateDistrictDropdownBtnLabel() {
+  const dropdownBtn = document.getElementById('districtDropdownBtn');
+  const checkboxContainer = document.getElementById('district-checkboxes');
+  const checked = checkboxContainer ? checkboxContainer.querySelectorAll('input:checked') : [];
+  let names = Array.from(checked).map(cb => cb.value);
+  if (dropdownBtn) {
+    if (names.length === 0) {
+      dropdownBtn.textContent = 'Select district(s)';
+      dropdownBtn.classList.remove('selected');
+    } else if (names.length <= 2) {
+      dropdownBtn.textContent = 'District(s): ' + names.join(', ');
+      dropdownBtn.classList.add('selected');
+    } else {
+      dropdownBtn.textContent = names.length + ' districts selected';
+      dropdownBtn.classList.add('selected');
+    }
+  }
+}
+
+function initDistrictDropdownMultiselect() {
+  const dropdownBtn = document.getElementById('districtDropdownBtn');
+  const dropdown = document.getElementById('districtDropdown');
+  const checkboxContainer = document.getElementById('district-checkboxes');
+  if (!dropdownBtn || !dropdown) return;
+
+  // Unbind previous events to avoid duplicate listeners
+  dropdownBtn.onclick = null;
+  if (checkboxContainer) checkboxContainer.onchange = null;
+
+  // Toggle dropdown
+  dropdownBtn.onclick = function(e) {
+    dropdown.style.display = (dropdown.style.display === 'block') ? 'none' : 'block';
+    e.stopPropagation();
+  };
+
+  // Label update on change by delegation
+  if (checkboxContainer) {
+    checkboxContainer.onchange = updateDistrictDropdownBtnLabel;
+  }
+
+  // Click outside to close
+  document.addEventListener('click', function clickOutsideDropdown(e) {
+    if (!dropdown.contains(e.target) && e.target !== dropdownBtn) {
+      dropdown.style.display = 'none';
+      document.removeEventListener('click', clickOutsideDropdown);
+    }
+  });
+
+  updateDistrictDropdownBtnLabel();
 }
 
 function addDistrictCheckboxListeners() {
@@ -1200,7 +1257,7 @@ function getChartOptions(title) {
       },
       scales: {
         y: {
-        beginAtZero: false,
+        beginAtZero: true, // Always start at zero!
           title: {
             display: true,
           text: 'CO2e (tonnes CO₂e/year)'
@@ -1481,8 +1538,8 @@ window.onload = () => {
         yearSlider.min = String(minYear);
         yearSlider.max = String(maxYear);
         yearSlider.step = "1";
-        yearSlider.value = String(minYear);
-        yearDisplay.textContent = String(minYear);
+        yearSlider.value = String(maxYear);
+        yearDisplay.textContent = String(maxYear);
       }
     })
     .catch((err) => console.error("Failed to load years:", err));
