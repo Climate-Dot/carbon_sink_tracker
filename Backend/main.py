@@ -478,12 +478,12 @@ def load_excel_data():
         
         logger.info("Loading State_Restructured sheet...")
         # Load State_Restructured sheet for forest state data
-        state_df = pd.read_excel(EXCEL_FILE_PATH, sheet_name='State_Restructured')
+        state_df = pd.read_excel(EXCEL_FILE_PATH, sheet_name='FL_State_Restructured')
         logger.info(f"State sheet loaded successfully. Shape: {state_df.shape}")
         
         logger.info("Loading Dist_Wise Restructured sheet...")
         # Load Dist_Wise Restructured sheet for forest district data
-        district_df = pd.read_excel(EXCEL_FILE_PATH, sheet_name='Dist_Wise Restructured')
+        district_df = pd.read_excel(EXCEL_FILE_PATH, sheet_name='FL_Dist_Wise_Restructured')
         logger.info(f"District sheet loaded successfully. Shape: {district_df.shape}")
         
         return state_df, district_df
@@ -532,19 +532,6 @@ def process_state_data(state_df):
         # Filter out 2023 data to match frontend expectation (2015-2022)
         yearly_data = yearly_data[yearly_data['Year'] <= 2022]
         
-        # Add dummy data for years 2011-2014
-        dummy_years = [2011, 2012, 2013, 2014]
-        dummy_emissions = [-50000000, -45000000, -40000000, -35000000]  # Dummy forest emissions
-        
-        for year, emission in zip(dummy_years, dummy_emissions):
-            yearly_data = pd.concat([yearly_data, pd.DataFrame({
-                'Year': [year],
-                'Emission (Ton yr^-1)/(Conversion of C to CO2)': [emission]
-            })], ignore_index=True)
-        
-        # Sort by year
-        yearly_data = yearly_data.sort_values('Year')
-        
         # Extract years and emissions
         years = yearly_data['Year'].astype(str).tolist()
         forest_emissions = yearly_data['Emission (Ton yr^-1)/(Conversion of C to CO2)'].astype(float).tolist()
@@ -571,19 +558,6 @@ def process_wetland_state_data(state_df):
         
         # Filter out 2023 data to match frontend expectation (2015-2022)
         yearly_data = yearly_data[yearly_data['Year'] <= 2022]
-        
-        # Add dummy data for years 2011-2014
-        dummy_years = [2011, 2012, 2013, 2014]
-        dummy_emissions = [-5000000, -4500000, -4000000, -3500000]  # Dummy wetland emissions
-        
-        for year, emission in zip(dummy_years, dummy_emissions):
-            yearly_data = pd.concat([yearly_data, pd.DataFrame({
-                'Year': [year],
-                'Emission (Ton yr^-1)/(Conversion of C to CO2)': [emission]
-            })], ignore_index=True)
-        
-        # Sort by year
-        yearly_data = yearly_data.sort_values('Year')
         
         # Extract years and emissions
         years = yearly_data['Year'].astype(str).tolist()
@@ -654,24 +628,8 @@ def process_district_data(district_df):
         # Group by district and year, then sum the emissions (since there are multiple rows per district per year)
         yearly_district_data = district_df.groupby(['District', 'Year'])['Emission (Ton yr^-1)/(Conversion of C to CO2)'].sum().reset_index()
         
-        # Add dummy data for years 2011-2014 for all districts
-        dummy_years = [2011, 2012, 2013, 2014]
-        districts = sorted(yearly_district_data['District'].unique().tolist())
-        
-        for year in dummy_years:
-            for district in districts:
-                # Generate dummy emissions based on district index for variation
-                district_index = districts.index(district)
-                base_emission = -10000000 - (district_index * 500000)  # Varying base forest emissions
-                dummy_emission = base_emission * (1 + (year - 2011) * 0.1)  # Slight variation by year
-                
-                yearly_district_data = pd.concat([yearly_district_data, pd.DataFrame({
-                    'District': [district],
-                    'Year': [year],
-                    'Emission (Ton yr^-1)/(Conversion of C to CO2)': [dummy_emission]
-                })], ignore_index=True)
-        
         # Get unique districts and years
+        districts = sorted(yearly_district_data['District'].unique().tolist())
         years = sorted(yearly_district_data['Year'].unique().astype(str).tolist())
         
         logger.info(f"Processing {len(districts)} districts for {len(years)} years")
@@ -755,28 +713,11 @@ def process_wetland_district_data(district_df):
         # Group by district and year, then sum the emissions (since there are multiple rows per district per year)
         yearly_district_data = district_df.groupby(['District', 'Year'])['Emission (Ton yr^-1)/(Conversion of C to CO2)'].sum().reset_index()
         
-        # Add dummy data for years 2011-2014 for all districts
-        dummy_years = [2011, 2012, 2013, 2014]
-        districts = sorted(yearly_district_data['District'].unique().tolist())
-        
-        for year in dummy_years:
-            for district in districts:
-                # Generate dummy emissions based on district index for variation
-                district_index = districts.index(district)
-                base_emission = -1000000 - (district_index * 50000)  # Varying base wetland emissions
-                dummy_emission = base_emission * (1 + (year - 2011) * 0.1)  # Slight variation by year
-                
-                yearly_district_data = pd.concat([yearly_district_data, pd.DataFrame({
-                    'District': [district],
-                    'Year': [year],
-                    'Emission (Ton yr^-1)/(Conversion of C to CO2)': [dummy_emission]
-                })], ignore_index=True)
-        
         # Get unique districts and years
+        districts = sorted(yearly_district_data['District'].unique().tolist())
         years = sorted(yearly_district_data['Year'].unique().astype(str).tolist())
-        
         logger.info(f"Processing {len(districts)} districts for {len(years)} years")
-        
+
         # Initialize data structures
         wetland_emissions = {}
         

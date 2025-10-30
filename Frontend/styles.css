@@ -117,7 +117,7 @@ button:hover {
 /* Button-specific styles */
 .load-btn {
     width: 49%;
-    background-color: #2f5577;
+    background-color: #17a2b8;
 }
 
 .clear-btn {
@@ -127,11 +127,11 @@ button:hover {
 
 .download-btn {
     width: 100%;
-    background-color: #b1d2f0;
+    background-color: #2f5577;
 }
 
 .load-btn:hover {
-    background-color: #1e3a52;
+    background-color: #12bcd6;
 }
 
 .clear-btn:hover {
@@ -139,7 +139,7 @@ button:hover {
 }
 
 .download-btn:hover {
-    background-color: #8bb8e6;
+    background-color: #093e6d;
 }
 
 /* Animation Controls */
@@ -530,4 +530,50 @@ button:hover {
 .stat-value {
     font-weight: 700;
     color: #2f5577;
+}
+
+/* Multiselect District Dropdown Styles */
+.multiselect-wrapper {
+  position: relative;
+  display: inline-block;
+  margin-bottom: 12px;
+}
+#districtDropdownBtn {
+  background: #fff;
+  color: #222;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  padding: 7px 14px;
+  width: 100%;
+  font-size: 15px;
+  cursor: pointer;
+  text-align: left;
+}
+#districtDropdownBtn.selected {
+  background: #e4f3fd;
+  border-color: #2090c0;
+  color: #00334a;
+}
+.multiselect-dropdown {
+  display: none;
+  position: absolute;
+  left: 0;
+  z-index: 999;
+  width: 94%;
+  min-width: 250px;
+  max-width: 400px;
+  background: #fff;
+  border: 1px solid #ccc;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.20), 0 1.5px 6px rgba(0,0,0,0.09);
+  padding: 10px 8px 10px 10px;
+  border-radius: 7px;
+  max-height: 300px;
+  overflow-y: auto;
+  font-size: 15px;
+}
+#districtDropdown .district-checkbox {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 14px;
+  cursor: pointer;
 }
