@@ -3,7 +3,8 @@
 const map = L.map("map").setView([22.5, 72.5], 9); // Gujarat center
 
 // Configurable API base URL: set window.API_BASE in production (e.g., Render)
-const API_BASE = window.API_BASE || "http://localhost:8000";
+// Empty string is valid for same-origin requests, so check for undefined/null explicitly
+const API_BASE = (window.API_BASE !== undefined && window.API_BASE !== null) ? window.API_BASE : "http://localhost:8000";
 
 // Add light basemap tiles (Carto Light)
 L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
