@@ -170,8 +170,17 @@
     <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
     <!-- Configure API base URL (reusing static paths already set) -->
     <script>
-      // Set API base URL using the already-defined window.isFileProtocol
-      window.API_BASE = window.isFileProtocol ? 'http://localhost:8000' : (window.location.hostname === 'localhost' ? 'http://localhost:8000' : "");
+      // Set API base URL - empty string for production (same origin), localhost for local dev
+      if (window.isFileProtocol) {
+        // Opening file directly - use localhost backend
+        window.API_BASE = 'http://localhost:8000';
+      } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        // Local development server - use localhost backend
+        window.API_BASE = 'http://localhost:8000';
+      } else {
+        // Production (Render, etc.) - use same origin (empty string = relative paths)
+        window.API_BASE = '';
+      }
     </script>
     <script>
       // Set logo path and load main.js

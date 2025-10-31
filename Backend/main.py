@@ -529,8 +529,11 @@ def process_state_data(state_df):
         # Group by year and sum the emissions (since there are multiple rows per year)
         yearly_data = state_df.groupby('Year')['Emission (Ton yr^-1)/(Conversion of C to CO2)'].sum().reset_index()
         
-        # Filter out 2023 data to match frontend expectation (2015-2022)
-        yearly_data = yearly_data[yearly_data['Year'] <= 2022]
+        # Filter out 2011 and 2023+ data - start from 2012
+        yearly_data = yearly_data[(yearly_data['Year'] >= 2012) & (yearly_data['Year'] <= 2022)]
+        
+        # Sort by year to ensure chronological order
+        yearly_data = yearly_data.sort_values('Year')
         
         # Extract years and emissions
         years = yearly_data['Year'].astype(str).tolist()
@@ -556,8 +559,11 @@ def process_wetland_state_data(state_df):
         # Group by year and sum the emissions (since there are multiple rows per year)
         yearly_data = state_df.groupby('Year')['Emission (Ton yr^-1)/(Conversion of C to CO2)'].sum().reset_index()
         
-        # Filter out 2023 data to match frontend expectation (2015-2022)
-        yearly_data = yearly_data[yearly_data['Year'] <= 2022]
+        # Filter out 2011 and 2023+ data - start from 2012 (same as forest)
+        yearly_data = yearly_data[(yearly_data['Year'] >= 2012) & (yearly_data['Year'] <= 2022)]
+        
+        # Sort by year to ensure chronological order
+        yearly_data = yearly_data.sort_values('Year')
         
         # Extract years and emissions
         years = yearly_data['Year'].astype(str).tolist()
@@ -627,6 +633,9 @@ def process_district_data(district_df):
         
         # Group by district and year, then sum the emissions (since there are multiple rows per district per year)
         yearly_district_data = district_df.groupby(['District', 'Year'])['Emission (Ton yr^-1)/(Conversion of C to CO2)'].sum().reset_index()
+        
+        # Filter out 2011 and 2023+ data - start from 2012
+        yearly_district_data = yearly_district_data[(yearly_district_data['Year'] >= 2012) & (yearly_district_data['Year'] <= 2022)]
         
         # Get unique districts and years
         districts = sorted(yearly_district_data['District'].unique().tolist())
@@ -712,6 +721,9 @@ def process_wetland_district_data(district_df):
         
         # Group by district and year, then sum the emissions (since there are multiple rows per district per year)
         yearly_district_data = district_df.groupby(['District', 'Year'])['Emission (Ton yr^-1)/(Conversion of C to CO2)'].sum().reset_index()
+        
+        # Filter out 2011 and 2023+ data - start from 2012
+        yearly_district_data = yearly_district_data[(yearly_district_data['Year'] >= 2012) & (yearly_district_data['Year'] <= 2022)]
         
         # Get unique districts and years
         districts = sorted(yearly_district_data['District'].unique().tolist())
