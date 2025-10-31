@@ -178,8 +178,8 @@
         // Local development server - use localhost backend
         window.API_BASE = 'http://localhost:8000';
       } else {
-        // Production (Render, etc.) - use same origin (empty string = relative paths)
-        window.API_BASE = '';
+        // Production (Render) - use full production URL
+        window.API_BASE = 'https://carbon-sink-tracker-1.onrender.com';
       }
     </script>
     <script>

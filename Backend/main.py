@@ -196,7 +196,9 @@ app = FastAPI(lifespan=lifespan)
 
 # Enable CORS (configure for production)
 # In development, allow both localhost and null origins (for file:// protocol)
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:8000,null").split(",")
+# In production, allow the Render frontend URL
+default_origins = "https://carbon-sink-tracker-1.onrender.com,http://localhost:8000,null"
+allowed_origins = os.getenv("ALLOWED_ORIGINS", default_origins).split(",")
 allowed_origins = [origin.strip() for origin in allowed_origins if origin.strip()]  # Clean up and remove empty strings
 
 app.add_middleware(
