@@ -1251,7 +1251,7 @@ function getChartOptions(title) {
         labels: {
           usePointStyle: true,
           pointStyle: 'line',
-          padding: 10
+          padding: 9
         }
         }
       },
@@ -1272,8 +1272,9 @@ function getChartOptions(title) {
       },
       elements: {
         point: {
-        radius: 3,
-        hoverRadius: 5
+        radius: 5,
+        hoverRadius: 7,
+        pointStyle: 'triangle' // Use triangles instead of circles
         }
       }
   };

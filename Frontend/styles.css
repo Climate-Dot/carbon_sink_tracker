@@ -34,13 +34,13 @@ body,
 
 #controls h2 {
     margin: 0;
-    font-size: 1.5em;
+    font-size: 1.4em;
     white-space: nowrap;
     color: #2f5577;
 }
 
 #logo {
-    width: 60px;
+    width: 70px;
     height: auto;
     opacity: 0.9;
 }
@@ -472,23 +472,89 @@ button:hover {
     right: 20px;
     width: 40px;
     height: 40px;
-    border-radius: 50%;
-    background-color: #d9dbe4;
-    color: white;
+    border-radius: 0;              /* remove oval */
+    background-color: transparent; /* no background */
+    color: #2f5577;
     border: none;
     font-size:  24px;
     cursor: pointer;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    box-shadow: none;              /* remove shadow */
     z-index: 1000;
-    transition: all 0.3s ease;
+    transition: transform 0.2s ease;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
 .chart-icon:hover {
-    background-color: #2c3e9d;
-    transform: scale(1.1);
+    background-color: transparent; /* keep transparent on hover */
+    transform: scale(1.05);
+}
+
+/* --- UI Polish: Consistent control sizing and spacing --- */
+/* Base variables (implicit) */
+
+/* Uniform border radius and heights for controls */
+#districtDropdownBtn,
+#lulcFilter,
+.load-btn,
+.clear-btn,
+.download-btn {
+    height: 44px;
+    border-radius: 10px;
+}
+
+/* Full-width dropdown trigger with accessible focus */
+#districtDropdownBtn {
+    width: 100%;
+    text-align: left;
+    outline: none;
+}
+#districtDropdownBtn:focus,
+#districtDropdownBtn:focus-visible {
+    box-shadow: 0 0 0 3px rgba(47, 85, 119, 0.25);
+}
+
+/* Wider, comfortable dropdown panel */
+.multiselect-dropdown {
+    width: 94%;
+    border-radius: 10px;
+    max-height: 300px;
+}
+
+/* Spacing between groups */
+.multiselect-wrapper,
+#lulcFilter,
+#yearSliderContainer,
+.button-row {
+    margin-top: 12px;
+}
+
+/* Year slider row with pill year display */
+#yearSliderContainer {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+#yearDisplay {
+    background: #eef4f8;
+    color: #2f5577;
+    padding: 4px 10px;
+    border-radius: 9999px;
+    font-weight: 600;
+    min-width: 48px;
+    text-align: center;
+}
+
+/* Buttons hover feedback (slightly darker) */
+.load-btn:hover {
+    filter: brightness(0.95);
+}
+.clear-btn:hover {
+    filter: brightness(0.95);
+}
+.download-btn:hover {
+    filter: brightness(0.95);
 }
 
 /* Statistics Box */
