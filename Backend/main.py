@@ -18,6 +18,8 @@ from fastapi import Body
 import pyodbc                                      # For SQL Server database connection
 from shapely import wkt, wkb                        # For parsing WKT geometries
 from shapely.geometry import mapping, shape               # For converting geometries to/from GeoJSON
+import shapely.ops as ops                             # For geometry transformations
+from pyproj import Transformer                        # For coordinate transformations
 import pandas as pd                                 # For Excel file processing
 import numpy as np                                  # For numerical operations
 # ==========================
@@ -396,32 +398,42 @@ def get_lulc_by_polygon(geojson: dict = Body(...), year: int = Query(...)):
     Accepts a GeoJSON geometry (Polygon or MultiPolygon). Converts it to WKT and
     performs a spatial intersection against fact_lulc_stats.geometry.
     """
+    logger.info("=" * 60)
+    logger.info(f"🔍 LULC Polygon Query Request - Year: {year}")
+    logger.info("=" * 60)
+    
     try:
+        logger.info("📐 Processing polygon geometry...")
         geom = shape(geojson)
-        logger.info(f"Original geometry valid: {geom.is_valid}")
+        logger.info(f"   ✓ Geometry type: {geom.geom_type}")
+        logger.info(f"   ✓ Original geometry valid: {geom.is_valid}")
+        logger.info(f"   ✓ Bounding box: {geom.bounds}")
+        
         # Try to make the geometry valid if it's not
         if not geom.is_valid:
-            logger.info("Geometry is invalid, attempting to fix with buffer(0)")
+            logger.info("   ⚠️ Geometry is invalid, attempting to fix with buffer(0)")
             geom = geom.buffer(0)  # This often fixes invalid geometries
-            logger.info(f"Fixed geometry valid: {geom.is_valid}")
+            logger.info(f"   ✓ Fixed geometry valid: {geom.is_valid}")
         wkt_polygon = geom.wkt
-        logger.info(f"WKT polygon length: {len(wkt_polygon)}")
+        logger.info(f"   ✓ WKT polygon length: {len(wkt_polygon)} characters")
     except Exception as e:
-        logger.error(f"Geometry processing error: {e}")
+        logger.error(f"❌ Geometry processing error: {e}")
         raise HTTPException(status_code=400, detail=f"Invalid GeoJSON: {e}")
 
     conn = None
     cursor = None
     try:
+        logger.info("🔌 Connecting to database...")
         conn = get_connection()
         cursor = conn.cursor()
+        logger.info("   ✓ Database connection established")
 
-        # Use STIntersects to filter polygons by intersection with input geometry
-        # Add TOP 1000 to prevent memory issues with large polygon queries
-        # Try bounding box approach first, then filter in Python
+        # Fetch LULC data for the specified year
+        # We'll filter by intersection in Python for reliability
+        logger.info(f"📊 Querying database for year {year}...")
         query = (
             """
-            SELECT TOP 1000
+            SELECT 
                 district_id,
                 year,
                 type_id,
@@ -434,24 +446,87 @@ def get_lulc_by_polygon(geojson: dict = Body(...), year: int = Query(...)):
         )
         cursor.execute(query, [year])
         rows = cursor.fetchall()
+        logger.info(f"   ✓ Fetched {len(rows)} total LULC features from database")
 
         features = []
         columns = [col[0] for col in cursor.description]
+        logger.info(f"✂️ Clipping {len(rows)} LULC features to polygon boundaries...")
+        
+        # Transformer for accurate area calculation (UTM Zone 43N covers Gujarat)
+        transformer = Transformer.from_crs("EPSG:4326", "EPSG:32643", always_xy=True)
+        
+        processed = 0
+        clipped_count = 0
         for row in rows:
-            row_dict = dict(zip(columns, row))
-            wkt_geom = row_dict.pop("geometry")
-            geom = wkt.loads(wkt_geom) if wkt_geom else None
-            geometry = mapping(geom) if geom else None
+            processed += 1
+            if processed % 100 == 0:
+                logger.info(f"   Processing... {processed}/{len(rows)} features checked, {clipped_count} clipped so far")
             
-            # Check if this feature intersects with our query polygon
-            if geometry:
-                feature_geom = shape(geometry)
-                if feature_geom.is_valid and feature_geom.intersects(geom):
-                    features.append({
-                        "type": "Feature",
-                        "geometry": geometry,
-                        "properties": row_dict,
-                    })
+            row_dict = dict(zip(columns, row))
+            original_area = row_dict.get('area', 0)
+            wkt_geom = row_dict.pop("geometry")
+            feature_wkt_geom = wkt.loads(wkt_geom) if wkt_geom else None
+            
+            # Only process features that intersect with the drawn polygon
+            if feature_wkt_geom:
+                feature_geom = shape(feature_wkt_geom)
+                # Ensure feature geometry is valid
+                if not feature_geom.is_valid:
+                    feature_geom = feature_geom.buffer(0)
+                
+                # Check if this LULC feature intersects with the drawn polygon
+                if feature_geom.intersects(geom):
+                    # Clip the feature to only show the portion inside the polygon
+                    try:
+                        clipped_geom = feature_geom.intersection(geom)
+                        
+                        # Skip if intersection results in empty geometry
+                        if clipped_geom.is_empty:
+                            continue
+                        
+                        # Ensure clipped geometry is valid
+                        if not clipped_geom.is_valid:
+                            clipped_geom = clipped_geom.buffer(0)
+                        
+                        # Calculate area of clipped portion (in hectares)
+                        # Transform to UTM for accurate area calculation
+                        clipped_geom_projected = ops.transform(transformer.transform, clipped_geom)
+                        clipped_area_m2 = clipped_geom_projected.area  # Area in square meters
+                        clipped_area_ha = clipped_area_m2 / 10000  # Convert to hectares
+                        
+                        # Convert clipped geometry to GeoJSON
+                        clipped_geometry = mapping(clipped_geom)
+                        
+                        # Update properties with clipped area
+                        row_dict['area'] = round(clipped_area_ha, 2)
+                        row_dict['original_area'] = round(original_area, 2) if original_area else 0
+                        row_dict['clipped'] = True
+                        
+                        features.append({
+                            "type": "Feature",
+                            "geometry": clipped_geometry,
+                            "properties": row_dict,
+                        })
+                        clipped_count += 1
+                        
+                    except Exception as clip_err:
+                        logger.warning(f"   ⚠️ Error clipping feature {processed}: {clip_err}")
+                        # Fallback: use original geometry if clipping fails
+                        geometry = mapping(feature_geom)
+                        row_dict['clipped'] = False
+                        features.append({
+                            "type": "Feature",
+                            "geometry": geometry,
+                            "properties": row_dict,
+                        })
+        
+        logger.info("=" * 60)
+        logger.info(f"✅ Clipping complete!")
+        logger.info(f"   📊 Total features checked: {len(rows)}")
+        logger.info(f"   ✂️ Features clipped to polygon: {clipped_count}")
+        logger.info(f"   ✅ Total features returned: {len(features)}")
+        logger.info(f"   📈 Match rate: {len(features)/len(rows)*100 if len(rows) > 0 else 0:.2f}%")
+        logger.info("=" * 60)
 
         return {"type": "FeatureCollection", "features": features}
     except Exception as e:
