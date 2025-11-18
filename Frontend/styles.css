@@ -72,6 +72,38 @@ label {
     max-width: 300px;
 }
 
+/* Legend group dropdown styles */
+.legend-group {
+    margin-bottom: 8px;
+}
+
+.legend-group-header {
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 0;
+    transition: color 0.2s ease;
+}
+
+.legend-group-header:hover {
+    color: #3f51b5;
+}
+
+.legend-arrow {
+    font-size: 10px;
+    color: #666;
+    transition: transform 0.2s ease;
+    display: inline-block;
+    width: 12px;
+}
+
+.legend-group-content {
+    margin-top: 4px;
+    transition: all 0.2s ease;
+}
+
 #yearSliderContainer {
     background: rgba(238, 247, 255, 0.9);
     padding: 8px 12px;
@@ -79,17 +111,12 @@ label {
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
     display: flex;
     align-items: center;
+    gap: 10px;
 }
 
 #yearSlider {
     width: 100%;
 }
-
-#yearDisplay {
-    margin-left: 5px;
-    font-weight: bold;
-}
-
 
 #district-checkboxes {
     display: grid;
@@ -120,9 +147,17 @@ button:hover {
     background-color: #17a2b8;
 }
 
+.load-btn:hover {
+    background-color: #138496;
+}
+
 .clear-btn {
     width: 49%;
     background-color: #c34444;
+}
+
+.clear-btn:hover {
+    background-color: #a03030;
 }
 
 .download-btn {
@@ -130,20 +165,13 @@ button:hover {
     background-color: #2f5577;
 }
 
-.load-btn:hover {
-    background-color: #12bcd6;
-}
-
-.clear-btn:hover {
-    background-color: #a03535;
-}
-
 .download-btn:hover {
-    background-color: #093e6d;
+    background-color: #1a3d5a;
 }
+
 
 /* Animation Controls */
-.animation-controls {
+/* .animation-controls {
     margin-top: 20px;
     padding: 15px;
     background-color: #f8f9fa;
@@ -226,7 +254,7 @@ button:hover {
     border-radius: 50%;
     background: #007bff;
     cursor: pointer;
-}
+} */
 
 /* Right Panel Styles */
 .right-panel {
@@ -394,14 +422,43 @@ button:hover {
     flex-direction: column;
 }
 
-.graph-chart-container h4 {
+.chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin: 0 0 8px 0;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.graph-chart-container h4 {
+    margin: 0;
     color: #333;
     font-size: 12px;
     font-weight: 600;
-    text-align: center;
-    padding-bottom: 6px;
-    border-bottom: 1px solid #e0e0e0;
+    text-align: left;
+    flex: 1;
+}
+
+.download-graph-btn {
+    background: #2f5577;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    min-width: 36px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.download-graph-btn:hover {
+    background: #1a3d5a;
+    transform: scale(1.05);
 }
 
 /* State graph container visibility */
@@ -492,16 +549,50 @@ button:hover {
 }
 
 /* --- UI Polish: Consistent control sizing and spacing --- */
-/* Base variables (implicit) */
-
 /* Uniform border radius and heights for controls */
 #districtDropdownBtn,
-#lulcFilter,
 .load-btn,
 .clear-btn,
 .download-btn {
     height: 44px;
     border-radius: 10px;
+}
+
+/* Filter dropdown styling to match district dropdown */
+#lulcFilter {
+  background: #fff;
+  color: #222;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  padding: 7px 30px 7px 14px;
+  width: 100%;
+  font-size: 15px;
+  cursor: pointer;
+  text-align: left;
+  position: relative;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: none;
+}
+
+/* Custom arrow for filter dropdown */
+#lulcFilter-wrapper {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+#lulcFilter-wrapper::after {
+  content: '▼';
+  position: absolute;
+  right: 10px;
+  top: 60%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  color: #666;
+  pointer-events: none;
+  z-index: 1;
 }
 
 /* Full-width dropdown trigger with accessible focus */
@@ -515,13 +606,6 @@ button:hover {
     box-shadow: 0 0 0 3px rgba(47, 85, 119, 0.25);
 }
 
-/* Wider, comfortable dropdown panel */
-.multiselect-dropdown {
-    width: 94%;
-    border-radius: 10px;
-    max-height: 300px;
-}
-
 /* Spacing between groups */
 .multiselect-wrapper,
 #lulcFilter,
@@ -530,12 +614,7 @@ button:hover {
     margin-top: 12px;
 }
 
-/* Year slider row with pill year display */
-#yearSliderContainer {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
+/* Year display styling */
 #yearDisplay {
     background: #eef4f8;
     color: #2f5577;
@@ -546,57 +625,7 @@ button:hover {
     text-align: center;
 }
 
-/* Buttons hover feedback (slightly darker) */
-.load-btn:hover {
-    filter: brightness(0.95);
-}
-.clear-btn:hover {
-    filter: brightness(0.95);
-}
-.download-btn:hover {
-    filter: brightness(0.95);
-}
 
-/* Statistics Box */
-.stats-box {
-    position: fixed;
-    bottom: 10px;
-    right: 10px;
-    background: rgba(255, 255, 255, 0.95);
-    padding: 15px;
-    border-radius: 8px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-    z-index: 1000;
-    min-width: 200px;
-    font-size: 14px;
-}
-
-.stats-box h4 {
-    margin: 0 0 10px 0;
-    color: #2f5577;
-    font-size: 16px;
-    border-bottom: 2px solid #2f5577;
-    padding-bottom: 5px;
-}
-
-.stat-item {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 8px;
-    padding: 5px;
-    background: rgba(245, 245, 245, 0.5);
-    border-radius: 4px;
-}
-
-.stat-label {
-    font-weight: 600;
-    color: #555;
-}
-
-.stat-value {
-    font-weight: 700;
-    color: #2f5577;
-}
 
 /* Multiselect District Dropdown Styles */
 .multiselect-wrapper {
@@ -609,11 +638,28 @@ button:hover {
   color: #222;
   border: 1px solid #bbb;
   border-radius: 4px;
-  padding: 7px 14px;
+  padding: 7px 30px 7px 14px;
   width: 100%;
   font-size: 15px;
   cursor: pointer;
   text-align: left;
+  position: relative;
+}
+
+#districtDropdownBtn::after {
+  content: '▼';
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  color: #666;
+  pointer-events: none;
+  transition: transform 0.2s ease;
+}
+
+#districtDropdownBtn.dropdown-open::after {
+  transform: translateY(-50%) rotate(180deg);
 }
 #districtDropdownBtn.selected {
   background: #e4f3fd;
@@ -632,7 +678,7 @@ button:hover {
   border: 1px solid #ccc;
   box-shadow: 0 6px 18px rgba(0,0,0,0.20), 0 1.5px 6px rgba(0,0,0,0.09);
   padding: 10px 8px 10px 10px;
-  border-radius: 7px;
+  border-radius: 10px;
   max-height: 300px;
   overflow-y: auto;
   font-size: 15px;

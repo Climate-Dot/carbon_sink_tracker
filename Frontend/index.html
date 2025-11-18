@@ -6,7 +6,6 @@
     <meta name="description" content="Carbon Sink Tracker - Interactive Land Use Land Cover mapping and analytics for Gujarat" />
     <meta name="keywords" content="carbon sink, LULC, land use, land cover, Gujarat, mapping, analytics" />
     <meta name="author" content="Carbon Sink Tracker" />
-    <link rel="icon" type="image/svg+xml" href="logo.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <!-- Leaflet CSS -->
@@ -22,15 +21,23 @@
       // Detect protocol and set base path (declare once, used globally)
       window.isFileProtocol = window.location.protocol === 'file:';
       window.STATIC_BASE = window.isFileProtocol ? '' : '/static';
-      // Load CSS with correct path
+      // Load CSS and set favicon with correct path
       const cssPath = window.isFileProtocol ? 'styles.css' : '/static/styles.css';
-      document.write(`<link rel="stylesheet" href="${cssPath}" />`);
+      const faviconPath = window.isFileProtocol ? 'logo.svg' : '/static/logo.svg';
+      // Create and add CSS link
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = cssPath;
+      document.head.appendChild(link);
+      // Create and add favicon
+      const favicon = document.createElement('link');
+      favicon.rel = 'icon';
+      favicon.type = 'image/svg+xml';
+      favicon.href = faviconPath;
+      document.head.appendChild(favicon);
     </script>
   </head>
   <body>
-    <!-- Statistics Box -->
-    <!-- (Removed Carbon Sink Area stats box) -->
-    
     <div id="controls">
       <div id="header-container">
         <img id="logo" alt="Logo" />
@@ -47,10 +54,12 @@
       <label
         ><b>Filter:</b>
         <br />
-        <select id="lulcFilter">
-          <option value="all">LULC</option>
-          <option value="forest">Carbon Sink</option>
-        </select>
+        <div id="lulcFilter-wrapper">
+          <select id="lulcFilter">
+            <option value="all">LULC</option>
+            <option value="forest">Carbon Sink</option>
+          </select>
+        </div>
       </label>
       <label for="yearSlider"
         ><b>Year:</b><br />
@@ -58,7 +67,7 @@
           <input
             type="range"
             id="yearSlider"
-            min="2011"
+            min="2012"
             max="2022"
             step="1"
             value="2022"
@@ -81,7 +90,7 @@
       </div>
       
       <!-- Animation Controls -->
-      <div class="animation-controls">
+      <!-- <div class="animation-controls">
         <h3>Carbon Sink Timeline</h3>
         <div class="animation-row">
           <button id="initAnimationBtn" onclick="initializeAnimation()" class="init-btn">🚀 Load Animation</button>
@@ -89,11 +98,9 @@
           <span id="currentYear" style="display: none;">2022</span>
         </div>
         <div class="year-slider-container" style="display: none;">
-          <input type="range" id="animationSlider" min="2015" max="2022" value="2022" step="1">
+          <input type="range" id="animationSlider" min="2012" max="2022" value="2022" step="1">
         </div>
-      </div>
-      
-      <br />
+      </div> -->
     </div>
     <div id="map"></div>
     
@@ -120,15 +127,24 @@
           
           <div class="graphs-container">
             <div class="graph-chart-container active" id="state-forest-container">
-              <h4>Forest CO2e Emissions</h4>
+              <div class="chart-header">
+                <h4>Forest CO2e Emissions</h4>
+                <button class="download-graph-btn" onclick="downloadChart('stateForestChartCanvas', 'Forest_CO2e_Emissions')" title="Download graph as PNG">📥</button>
+              </div>
               <canvas id="stateForestChartCanvas"></canvas>
             </div>
             <div class="graph-chart-container" id="state-wetland-container">
-              <h4>Wetland CO2e Emissions</h4>
+              <div class="chart-header">
+                <h4>Wetland CO2e Emissions</h4>
+                <button class="download-graph-btn" onclick="downloadChart('stateWetlandChartCanvas', 'Wetland_CO2e_Emissions')" title="Download graph as PNG">📥</button>
+              </div>
               <canvas id="stateWetlandChartCanvas"></canvas>
             </div>
             <div class="graph-chart-container" id="state-total-container">
-              <h4>Total CO2e Emissions (Forest + Wetland)</h4>
+              <div class="chart-header">
+                <h4>Total CO2e Emissions (Forest + Wetland)</h4>
+                <button class="download-graph-btn" onclick="downloadChart('stateCombinationChartCanvas', 'Total_CO2e_Emissions')" title="Download graph as PNG">📥</button>
+              </div>
               <canvas id="stateCombinationChartCanvas"></canvas>
             </div>
           </div>
@@ -145,15 +161,24 @@
           
           <div class="graphs-container">
             <div class="graph-chart-container active" id="district-forest-container">
-              <h4>Forest CO2e Emissions by District</h4>
+              <div class="chart-header">
+                <h4>Forest CO2e Emissions by District</h4>
+                <button class="download-graph-btn" onclick="downloadChart('districtForestChartCanvas', 'Forest_CO2e_Emissions_by_District')" title="Download graph as PNG">📥</button>
+              </div>
               <canvas id="districtForestChartCanvas"></canvas>
             </div>
             <div class="graph-chart-container" id="district-wetland-container">
-              <h4>Wetland CO2e Emissions by District</h4>
+              <div class="chart-header">
+                <h4>Wetland CO2e Emissions by District</h4>
+                <button class="download-graph-btn" onclick="downloadChart('districtWetlandChartCanvas', 'Wetland_CO2e_Emissions_by_District')" title="Download graph as PNG">📥</button>
+              </div>
               <canvas id="districtWetlandChartCanvas"></canvas>
             </div>
             <div class="graph-chart-container" id="district-total-container">
-              <h4>Total CO2e Emissions by District (Forest + Wetland)</h4>
+              <div class="chart-header">
+                <h4>Total CO2e Emissions by District (Forest + Wetland)</h4>
+                <button class="download-graph-btn" onclick="downloadChart('districtCombinationChartCanvas', 'Total_CO2e_Emissions_by_District')" title="Download graph as PNG">📥</button>
+              </div>
               <canvas id="districtCombinationChartCanvas"></canvas>
             </div>
           </div>
