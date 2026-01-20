@@ -574,15 +574,13 @@ async function loadLULC() {
         html += `<div class="legend-group">
           <div class="legend-group-header" onclick="toggleLegendGroup(this)">
             <span class="legend-arrow">▼</span>
-            <strong>Forest</strong>
+            <strong style="color: #4c7300;">Forest</strong>
           </div>
           <div class="legend-group-content" style="display: block;">
         `;
         for (const [code, label] of Object.entries(forestGroup)) {
           html += `<div style="margin-left: 15px; margin-bottom: 4px;">
-            <i style="background:${getColor(
-              Number(code)
-            )}; width: 29px; height: 18px; display: inline-block; margin-right: 8px;"></i> ${label}
+            ${label}
           </div>`;
         }
         html += `</div></div>`;
@@ -594,15 +592,13 @@ async function loadLULC() {
         html += `<div class="legend-group"${marginTop}>
           <div class="legend-group-header" onclick="toggleLegendGroup(this)">
             <span class="legend-arrow">▼</span>
-            <strong>Others</strong>
+            <strong style="color: #ffc107;">Others</strong>
           </div>
           <div class="legend-group-content" style="display: block;">
         `;
         for (const [code, label] of Object.entries(othersGroup)) {
           html += `<div style="margin-left: 15px; margin-bottom: 4px;">
-            <i style="background:${getColor(
-              Number(code)
-            )}; width: 29px; height: 18px; display: inline-block; margin-right: 8px;"></i> ${label}
+            ${label}
           </div>`;
         }
         html += `</div></div>`;
