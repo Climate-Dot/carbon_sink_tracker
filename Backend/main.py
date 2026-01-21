@@ -13,6 +13,7 @@ import logging                                     # For proper logging
 from dotenv import load_dotenv                     # For loading environment variables from .env file
 from fastapi import FastAPI, Query, HTTPException  # FastAPI core and request handling
 from fastapi.middleware.cors import CORSMiddleware # Middleware to allow cross-origin requests
+from fastapi.middleware.gzip import GZipMiddleware  # For response compression
 from fastapi.responses import JSONResponse, FileResponse  # For structured API responses and serving files
 from fastapi import Body
 import pyodbc                                      # For SQL Server database connection
@@ -211,6 +212,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add GZip compression for responses (reduces data transfer size)
+app.add_middleware(GZipMiddleware, minimum_size=1000)  # Compress responses > 1KB
+
 
 from fastapi.staticfiles import StaticFiles
 
@@ -255,10 +259,6 @@ async def get_all_metadata():
         }
     )
 
-
-
-
-
 @app.get("/districts")
 async def get_districts():
     """
@@ -282,7 +282,10 @@ def get_lulc(district_id: list[str] = Query(...), year: int = Query(...)):
 
     Accepts one or many district_id query params; dynamically builds the
     WHERE clause using parameterized placeholders to avoid injection.
+    Uses WKT conversion for Geography types (STAsGeoJSON not available).
     """
+    import time
+    start_time = time.time()
     logger.info(f"LULC request: {len(district_id)} districts, year {year}")
     
     conn = None
@@ -293,12 +296,10 @@ def get_lulc(district_id: list[str] = Query(...), year: int = Query(...)):
             raise Exception("Failed to establish database connection.")
         cursor = conn.cursor()
 
-        # Dynamically build the WHERE clause based on the number of districts
-        # Add LIMIT to prevent memory issues on large datasets
-        # Return all LULC types (no filtering)
+        # Use WKT conversion (STAsGeoJSON not available for Geography types)
         if len(district_id) == 1:
             query = """
-                SELECT TOP 2000
+                SELECT TOP 3000
                     district_id,
                     year,
                     type_id, 
@@ -326,29 +327,39 @@ def get_lulc(district_id: list[str] = Query(...), year: int = Query(...)):
             """
             params = district_id + [year]
 
+        query_start = time.time()
         cursor.execute(query, params)
         rows = cursor.fetchall()
+        query_time = time.time() - query_start
+        logger.info(f"   ✓ Database query took {query_time:.2f}s, fetched {len(rows)} rows")
 
         # Build GeoJSON FeatureCollection from rows
         features = []
-        columns = [col[0] for col in cursor.description]
-
+        parse_start = time.time()
+        
         for row in rows:
-            row_dict = dict(zip(columns, row))
-            wkt_geom = row_dict.pop("geometry")
-
-            # Convert WKT → GeoJSON dict
+            district_id_val, year_val, type_id_val, area_val, wkt_geom = row
             geom = wkt.loads(wkt_geom) if wkt_geom else None
             geometry = mapping(geom) if geom else None
 
             feature = {
                 "type": "Feature",
                 "geometry": geometry,
-                "properties": row_dict,
+                "properties": {
+                    "district_id": district_id_val,
+                    "year": year_val,
+                    "type_id": type_id_val,
+                    "area": float(area_val) if area_val else 0.0
+                },
             }
             features.append(feature)
 
+        parse_time = time.time() - parse_start
+        logger.info(f"   ✓ WKT to GeoJSON conversion took {parse_time:.2f}s")
+
         geojson = {"type": "FeatureCollection", "features": features}
+        total_time = time.time() - start_time
+        logger.info(f"✅ LULC endpoint completed in {total_time:.2f}s")
         return geojson
 
     except Exception as e:

@@ -6,13 +6,59 @@ const map = L.map("map").setView([22.5, 72.5], 9); // Gujarat center
 // Empty string is valid for same-origin requests, so check for undefined/null explicitly
 const API_BASE = (window.API_BASE !== undefined && window.API_BASE !== null) ? window.API_BASE : "http://localhost:8000";
 
-// Add light basemap tiles (Carto Light)
-L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
-  attribution:
-    '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>',
-  subdomains: "abcd",
-  maxZoom: 19,
-}).addTo(map);
+// Define multiple base layers
+// Carto Light
+const cartoLight = L.tileLayer(
+  "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+  {
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>',
+    subdomains: "abcd",
+    maxZoom: 19,
+  }
+);
+
+// OpenStreetMap
+const osm = L.tileLayer(
+  "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors',
+    maxZoom: 19,
+  }
+);
+
+// Satellite (Esri)
+const esriSat = L.tileLayer(
+  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+  {
+    attribution: "Tiles © Esri",
+    maxZoom: 19,
+  }
+);
+
+// Terrain (OpenTopo)
+const openTopo = L.tileLayer(
+  "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+  {
+    attribution: '&copy; <a href="https://www.opentopomap.org/">OpenTopoMap</a> contributors',
+    subdomains: "abc",
+    maxZoom: 17,
+  }
+);
+
+// Add default base layer
+cartoLight.addTo(map);
+
+// Create base maps object for layer control
+const baseMaps = {
+  "Carto Light": cartoLight,
+  "Satellite": esriSat,
+  "OpenStreetMap": osm,
+  "Terrain (OpenTopo)": openTopo,
+};
+
+// Add layer control to map
+L.control.layers(baseMaps, null, { position: 'bottomleft' }).addTo(map);
 
 // Add a metric-only scale control
 L.control
@@ -221,17 +267,22 @@ fetch(`${API_BASE}/metadata`)
 // Layer/state handles used across interactions
 let villageLayer = null;     // Placeholder for village boundaries (optional)
 let legend = null;           // Dynamic legend control
+let animationLegend = null;  // Legend for animation layer
 let currentLayer = null;     // Current district-filtered LULC layer
 let loadedLulcLayers = [];   // Array to track all loaded LULC layers
 let drawnItems = new L.FeatureGroup(); // Holds user-drawn shapes
 map.addLayer(drawnItems);
 
-// Animation variables
-// let animationInterval = null;
-// let isPlaying = false;
-// let currentAnimationYear = 2022;
-// // Cache for animation data by year
-// let animationDataCache = {};
+// Cache for metadata and type mappings to avoid repeated API calls
+let metadataCache = null;
+let typeMappingCache = {};
+
+// Animation variables for district-wise time series
+let animationInterval = null;
+let isPlaying = false;
+let currentAnimationYear = null;
+let animationDistrict = null;
+let animationDataCache = {}; // Structure: { district_year: { features: [...], ... } }
 
 // Helper function to get formatted timestamp
 function getTimestamp() {
@@ -327,13 +378,38 @@ map.on(L.Draw.Event.CREATED, async (e) => {
     // Render the results with styling and popups
     // Only the clipped portions of LULC features inside the polygon are displayed
     console.log('🎨 Rendering clipped LULC features on map...');
+    
+    // Define forest types for polygon drawing (same as in loadLULC)
+    const forestTypesPolygon = [
+      51, 52, 61, 62, 71, 72, 81, 82, 91, 92, 181, 182, 183, 186,
+    ];
+    
+    // Helper function to get group color for polygon drawing
+    const getGroupColorPolygon = (typeId, typeName) => {
+      const typeIdNum = Number(typeId);
+      const typeNameLower = (typeName || '').toLowerCase();
+      const croplandKeywords = ['rainfed', 'cropland', 'sparse vegetation', 'sparse', 'vegetation'];
+      
+      if (forestTypesPolygon.includes(typeIdNum)) {
+        return '#4c7300'; // Forest green
+      } else if (croplandKeywords.some(keyword => typeNameLower.includes(keyword))) {
+        return '#ff9800'; // Cropland orange
+      } else {
+        return '#ffc107'; // Others yellow
+      }
+    };
+    
     const layerResult = L.geoJSON(geojson, {
-      style: (f) => ({
+      style: (f) => {
+        const typeId = Number(f.properties.type_id);
+        const typeName = typeMapping[typeId] || `LULC Type ${typeId}`;
+        return {
         color: '#333',
         weight: 1,
-        fillColor: getColor(Number(f.properties.type_id)),
+          fillColor: getGroupColorPolygon(typeId, typeName),
         fillOpacity: 0.7,
-      }),
+        };
+      },
       onEachFeature: (feature, layerPopup) => {
         const typeId = Number(feature.properties.type_id);
         const typeName = typeMapping[typeId] || `LULC Type ${typeId}`;
@@ -426,13 +502,24 @@ async function loadLULC() {
   submitBtn.textContent = "Loading...";
   submitBtn.disabled = true;
 
+  // Start timing
+  const loadStartTime = performance.now();
+  const timings = {};
+
   try {
-    // Fetch metadata once
+    // Use cached metadata or fetch if not available
+    const metadataStart = performance.now();
+    let metadata = metadataCache;
+    if (!metadata) {
     const metadataRes = await fetch(`${API_BASE}/metadata`);
     if (!metadataRes.ok) throw new Error("Failed to fetch metadata");
-    const metadata = await metadataRes.json();
+      metadata = await metadataRes.json();
+      metadataCache = metadata; // Cache for future use
+    }
+    timings.metadata = performance.now() - metadataStart;
 
     // District ID mapping (name → id) and reverse (id → readable name)
+    const mappingStart = performance.now();
     const districtNameToId = {};
     const districtIdToName = {};
     metadata.district_boundary.features.forEach((f) => {
@@ -440,7 +527,10 @@ async function loadLULC() {
       if (name) districtNameToId[name] = f.properties.id;
       if (f.properties.id != null) districtIdToName[f.properties.id] = f.properties.name;
     });
+    timings.mapping = performance.now() - mappingStart;
 
+    // Check if we have cached Gujarat data for this year
+    const dataFetchStart = performance.now();
     // Build query for selected districts
     const query = new URLSearchParams();
     districts.forEach((d) => {
@@ -451,9 +541,12 @@ async function loadLULC() {
 
     const url = `${API_BASE}/lulc-geojson?${query.toString()}`;
 
+    // Fetch LULC data
     const lulcRes = await fetch(url);
     if (!lulcRes.ok) throw new Error("Failed to fetch LULC data");
     const lulcData = await lulcRes.json();
+    timings.dataFetch = performance.now() - dataFetchStart;
+    console.log(`⏱️ Data fetch: ${(timings.dataFetch / 1000).toFixed(2)}s`);
 
     // Define LULC type groups
     const forestTypes = [
@@ -461,98 +554,197 @@ async function loadLULC() {
     ];
     const wetlandTypes = [181, 182, 183, 186];
 
-    // Filter LULC features
+    // Helper function to get group color based on type (matches legend colors)
+    const getGroupColor = (typeId, typeName, typeMapping) => {
+      const typeIdNum = Number(typeId);
+      const typeNameLower = (typeName || (typeMapping && typeMapping[typeIdNum]) || '').toLowerCase();
+      const croplandKeywords = ['rainfed', 'cropland', 'sparse vegetation', 'sparse', 'vegetation'];
+      
+      if (forestTypes.includes(typeIdNum)) {
+        return '#4c7300'; // Forest green
+      } else if (croplandKeywords.some(keyword => typeNameLower.includes(keyword))) {
+        return '#ff9800'; // Cropland orange
+      } else {
+        return '#ffc107'; // Others yellow
+      }
+    };
+
+    // Filter LULC features (optimized with Set for faster lookups)
+    const forestTypesSet = new Set(forestTypes);
+    const wetlandTypesSet = new Set(wetlandTypes);
     const filteredFeatures = lulcData.features.filter((f) => {
       const t = Number(f.properties.type_id);
-      if (filterType === "forest") return forestTypes.includes(t);
-      if (filterType === "wetland") return wetlandTypes.includes(t);
+      if (filterType === "forest") return forestTypesSet.has(t);
+      if (filterType === "wetland") return wetlandTypesSet.has(t);
       return true;
     });
+    
+    // Limit features for performance (show largest areas first)
+    const MAX_FEATURES = 3000; // Limit to 3000 features for better performance
+    const featuresToProcess = filteredFeatures.length > MAX_FEATURES
+      ? filteredFeatures.slice(0, MAX_FEATURES).sort((a, b) => (b.properties.area || 0) - (a.properties.area || 0))
+      : filteredFeatures;
+    
+    if (filteredFeatures.length > MAX_FEATURES) {
+      console.warn(`⚠️ Limiting display to ${MAX_FEATURES} largest features (out of ${filteredFeatures.length} total)`);
+    }
 
     // Collect unique type_ids to fetch human-readable names once
+    const typeMappingStart = performance.now();
     const uniqueIds = [
       ...new Set(lulcData.features.map((f) => Number(f.properties.type_id))),
     ];
 
-    // Fetch type names mapping
+    // Check cache first, then fetch missing type names
+    const typeMapping = {};
+    const missingIds = [];
+    
+    uniqueIds.forEach(id => {
+      if (typeMappingCache[id]) {
+        typeMapping[id] = typeMappingCache[id];
+      } else {
+        missingIds.push(id);
+      }
+    });
+
+    // Fetch only missing type names
+    if (missingIds.length > 0) {
     const typeRes = await fetch(
-      `${API_BASE}/lulc-types?${uniqueIds
+        `${API_BASE}/lulc-types?${missingIds
         .map((id) => `type_id=${id}`)
         .join("&")}`
     );
     if (!typeRes.ok) throw new Error("Failed to fetch LULC type names");
-    const typeMapping = await typeRes.json(); // { "51": "Evergreen Forest", "181": "Wetland", ... }
+      const fetchedTypes = await typeRes.json();
+      
+      // Merge into typeMapping and cache
+      Object.assign(typeMapping, fetchedTypes);
+      Object.assign(typeMappingCache, fetchedTypes);
+    }
+    timings.typeMapping = performance.now() - typeMappingStart;
+    console.log(`⏱️ Type mapping: ${(timings.typeMapping / 1000).toFixed(2)}s`);
 
-    // Augment features with readable fields for UI/CSV
-    const augmentedFeatures = filteredFeatures.map((f) => {
+    // Simplify geometries to reduce complexity
+    const processingStart = performance.now();
+    const featuresToRender = featuresToProcess.map(f => simplifyGeometry(f, 0.0003)); // More aggressive simplification for speed
+    
+    console.log(`📊 Processing ${featuresToRender.length} features for rendering`);
+    
+    // Augment features with readable fields for UI/CSV (optimized)
+    const typeMappingLookup = typeMapping; // Cache reference
+    const augmentedFeatures = [];
+    for (let i = 0; i < featuresToRender.length; i++) {
+      const f = featuresToRender[i];
       const typeIdNum = Number(f.properties.type_id);
       // Convert area to hectares if it appears to be in square kilometers
-      // If area is less than 50, assume it's in km² and convert to hectares (multiply by 100)
       let areaValue = typeof f.properties.area === "number" ? f.properties.area : Number(f.properties.area) || 0;
       if (areaValue > 0 && areaValue < 50) {
-        // Likely in square kilometers, convert to hectares
         areaValue = areaValue * 100;
       }
-      return {
+      augmentedFeatures.push({
         ...f,
         properties: {
           ...f.properties,
-          type_name: typeMapping[typeIdNum] || "Unknown",
+          type_name: typeMappingLookup[typeIdNum] || "Unknown",
           district: districtIdToName[f.properties.district_id] || "N/A",
           area_ha: areaValue,
-          area: areaValue, // Update the area property as well for popup display
+          area: areaValue,
         },
-      };
-    });
+      });
+    }
+    timings.processing = performance.now() - processingStart;
+    console.log(`⏱️ Feature processing: ${(timings.processing / 1000).toFixed(2)}s`);
 
-    // Add LULC layer for filtered features
+    // Pre-calculate styles to avoid repeated calculations
+    const styleCache = new Map();
+    const getCachedStyle = (typeId, typeName) => {
+      const key = `${typeId}_${typeName}`;
+      if (!styleCache.has(key)) {
+        styleCache.set(key, {
+          color: "#333",
+          weight: forestTypes.includes(typeId) ? 0.5 : 0,
+          fillColor: getGroupColor(typeId, typeName, typeMapping),
+          fillOpacity: 0.6,
+        });
+      }
+      return styleCache.get(key);
+    };
+
+    // Add LULC layer with performance optimizations
+    // Use canvas renderer for better performance with many features
+    const renderStartTime = performance.now();
     currentLayer = L.geoJSON(
       { type: "FeatureCollection", features: augmentedFeatures },
       {
-        style: (f) => ({
-          color: "#333",
-          weight: forestTypes.includes(Number(f.properties.type_id)) ? 0.5 : 0,
-          fillColor: getColor(Number(f.properties.type_id)),
-          fillOpacity: 0.6,
-        }),
-        onEachFeature: (f, layer) => {
+        style: (f) => {
           const typeId = Number(f.properties.type_id);
           const typeName = typeMapping[typeId] || "Unknown";
-          layer.bindPopup(
-            `<b>Type:</b> ${typeName}<br>
-            <b>Area:</b> ${f.properties.area?.toFixed(2) || "N/A"} ha`
-          );
+          return getCachedStyle(typeId, typeName);
         },
+        onEachFeature: (f, layer) => {
+          // Only bind popup on click to reduce initial overhead
+          const typeId = Number(f.properties.type_id);
+          const typeName = typeMapping[typeId] || "Unknown";
+          const area = f.properties.area?.toFixed(2) || "N/A";
+          layer.on('click', function() {
+            this.bindPopup(
+            `<b>Type:</b> ${typeName}<br>
+              <b>Area:</b> ${area} ha`
+            ).openPopup();
+          });
+        },
+        // Use canvas renderer for better performance
+        renderer: L.canvas({ padding: 0.5 })
       }
-    ).addTo(map);
+    );
+    
+    // Add layer to map
+    currentLayer.addTo(map);
     
     // Add to tracking array
     loadedLulcLayers.push(currentLayer);
 
-    // Bring LULC on top
+    // Defer expensive operations
+    requestAnimationFrame(() => {
     currentLayer.bringToFront();
-
-    // Fit map to LULC bounds
-    if (filteredFeatures.length > 0) map.fitBounds(currentLayer.getBounds());
-
-    // Build legend based on visible types
-    const uniqueTypes = {};
-    augmentedFeatures.forEach((f) => {
-      const t = Number(f.properties.type_id);
-      // Skip unwanted types
-      if ([71, 72, 81, 82].includes(t)) return;
-      if (!uniqueTypes[t]) uniqueTypes[t] = typeMapping[t] || "Unknown";
+      // Fit bounds after rendering to avoid blocking
+      if (filteredFeatures.length > 0) {
+        requestAnimationFrame(() => {
+          map.fitBounds(currentLayer.getBounds(), { padding: [20, 20] });
+        });
+      }
     });
+    
+    timings.render = performance.now() - renderStartTime;
+    console.log(`🎨 Rendering took ${(timings.render / 1000).toFixed(2)}s`);
 
-    // Separate into forest and others groups
+    // Build legend based on visible types (optimized)
+    const uniqueTypes = {};
+    const skipTypes = new Set([71, 72, 81, 82]);
+    for (let i = 0; i < augmentedFeatures.length; i++) {
+      const t = Number(augmentedFeatures[i].properties.type_id);
+      if (skipTypes.has(t)) continue;
+      if (!uniqueTypes[t]) uniqueTypes[t] = typeMapping[t] || "Unknown";
+    }
+
+    // Separate into forest, cropland, and others groups
     const forestGroup = {};
+    const croplandGroup = {};
     const othersGroup = {};
+    
+    // Keywords to identify cropland types
+    const croplandKeywords = ['rainfed', 'cropland', 'sparse vegetation', 'sparse', 'vegetation'];
     
     for (const [code, label] of Object.entries(uniqueTypes)) {
       const codeNum = Number(code);
+      const labelLower = label.toLowerCase();
+      
       // Check if this type is in the forestTypes array (includes forests and wetlands)
       if (forestTypes.includes(codeNum)) {
         forestGroup[code] = label;
+      } else if (croplandKeywords.some(keyword => labelLower.includes(keyword))) {
+        // Check if label contains cropland-related keywords
+        croplandGroup[code] = label;
       } else {
         othersGroup[code] = label;
       }
@@ -569,11 +761,15 @@ async function loadLULC() {
           : "LULC Legend"
       }</h4>`;
       
+      // Start container for two-column layout
+      html += `<div class="legend-groups-container">`;
+      
       // Forest group with dropdown
       if (Object.keys(forestGroup).length > 0) {
         html += `<div class="legend-group">
           <div class="legend-group-header" onclick="toggleLegendGroup(this)">
             <span class="legend-arrow">▼</span>
+            <span class="legend-color-box" style="background-color: #4c7300; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
             <strong style="color: #4c7300;">Forest</strong>
           </div>
           <div class="legend-group-content" style="display: block;">
@@ -586,12 +782,30 @@ async function loadLULC() {
         html += `</div></div>`;
       }
       
-      // Others group with dropdown
-      if (Object.keys(othersGroup).length > 0) {
-        const marginTop = Object.keys(forestGroup).length > 0 ? ' style="margin-top: 12px;"' : '';
-        html += `<div class="legend-group"${marginTop}>
+      // Cropland group with dropdown
+      if (Object.keys(croplandGroup).length > 0) {
+        html += `<div class="legend-group">
           <div class="legend-group-header" onclick="toggleLegendGroup(this)">
             <span class="legend-arrow">▼</span>
+            <span class="legend-color-box" style="background-color: #ff9800; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
+            <strong style="color: #ff9800;">Cropland</strong>
+          </div>
+          <div class="legend-group-content" style="display: block;">
+        `;
+        for (const [code, label] of Object.entries(croplandGroup)) {
+          html += `<div style="margin-left: 15px; margin-bottom: 4px;">
+            ${label}
+          </div>`;
+        }
+        html += `</div></div>`;
+      }
+      
+      // Others group with dropdown
+      if (Object.keys(othersGroup).length > 0) {
+        html += `<div class="legend-group">
+          <div class="legend-group-header" onclick="toggleLegendGroup(this)">
+            <span class="legend-arrow">▼</span>
+            <span class="legend-color-box" style="background-color: #ffc107; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
             <strong style="color: #ffc107;">Others</strong>
           </div>
           <div class="legend-group-content" style="display: block;">
@@ -604,16 +818,56 @@ async function loadLULC() {
         html += `</div></div>`;
       }
       
+      // Close container
+      html += `</div>`;
+      
       div.innerHTML = html;
       return div;
     };
     legend.addTo(map);
+    
+    // Calculate and display loading time
+    const loadEndTime = performance.now();
+    const loadDuration = loadEndTime - loadStartTime;
+    const loadTimeSeconds = (loadDuration / 1000).toFixed(2);
+    
+    // Log detailed timing breakdown
+    console.log(`⏱️ LULC data loaded in ${loadTimeSeconds}s`);
+    console.log(`   📊 Breakdown:`);
+    console.log(`   - Metadata: ${((timings.metadata || 0) / 1000).toFixed(2)}s`);
+    console.log(`   - Mapping: ${((timings.mapping || 0) / 1000).toFixed(2)}s`);
+    console.log(`   - Data fetch: ${((timings.dataFetch || 0) / 1000).toFixed(2)}s`);
+    console.log(`   - Type mapping: ${((timings.typeMapping || 0) / 1000).toFixed(2)}s`);
+    console.log(`   - Processing: ${((timings.processing || 0) / 1000).toFixed(2)}s`);
+    console.log(`   - Rendering: ${((timings.render || 0) / 1000).toFixed(2)}s`);
+    const otherTime = loadDuration - (timings.metadata || 0) - (timings.mapping || 0) - (timings.dataFetch || 0) - (timings.typeMapping || 0) - (timings.processing || 0) - (timings.render || 0);
+    if (otherTime > 100) {
+      console.log(`   - Other: ${(otherTime / 1000).toFixed(2)}s`);
+    }
+    
+    // Update button to show completion with time
+    submitBtn.textContent = `Loaded (${loadTimeSeconds}s)`;
+    
+    // Reset button text after 2 seconds
+    setTimeout(() => {
+      if (submitBtn) {
+        submitBtn.textContent = "Load";
+      }
+    }, 2000);
+    
   } catch (err) {
     console.error(err);
+    const loadEndTime = performance.now();
+    const loadDuration = loadEndTime - loadStartTime;
+    const loadTimeSeconds = (loadDuration / 1000).toFixed(2);
+    console.error(`❌ Failed after ${loadTimeSeconds}s`);
     alert("Failed to load LULC data: " + err.message);
   } finally {
-    submitBtn.textContent = "Load";
     submitBtn.disabled = false;
+    // Only reset text if it wasn't already updated with time
+    if (submitBtn && submitBtn.textContent === "Loading...") {
+      submitBtn.textContent = "Load";
+    }
   }
 }
 
@@ -817,18 +1071,7 @@ function openRightPanel() {
   // Change icon to satellite when panel is open
   chartIcon.textContent = '🛰️';
   
-  // Auto-select Ahmedabad and Amreli when panel opens
-  const ahmedabadCheckbox = document.getElementById('district-Ahmadabad');
-  const amreliCheckbox = document.getElementById('district-Amreli');
-  
-  if (ahmedabadCheckbox) {
-    ahmedabadCheckbox.checked = true;
-  }
-  if (amreliCheckbox) {
-    amreliCheckbox.checked = true;
-  }
-  
-  // Refresh district charts to show selected districts
+  // Refresh district charts (no districts auto-selected)
   refreshDistrictCharts();
 }
 
@@ -1831,11 +2074,449 @@ function toggleLegendGroup(header) {
 // Make toggleLegendGroup available globally
 window.toggleLegendGroup = toggleLegendGroup;
 
+// ============================================
+// District-wise Animation Functions
+// ============================================
+
+// Populate district dropdown for animation
+function populateAnimationDistrictSelect() {
+  const select = document.getElementById('animationDistrictSelect');
+  if (!select) return;
+  
+  // Get districts from the district checkboxes
+  const districtCheckboxes = document.querySelectorAll('#district-checkboxes input[type="checkbox"]');
+  select.innerHTML = '<option value="">-- Select a district --</option>';
+  
+  districtCheckboxes.forEach(checkbox => {
+    const option = document.createElement('option');
+    option.value = checkbox.value;
+    option.textContent = checkbox.value;
+    select.appendChild(option);
+  });
+  
+  // Add change handler
+  select.addEventListener('change', async (e) => {
+    const selectedDistrict = e.target.value;
+    if (selectedDistrict) {
+      animationDistrict = selectedDistrict;
+      currentAnimationYear = Math.min(...availableYears);
+      document.getElementById('playBtn').disabled = true; // Disable until data loads
+      document.getElementById('animationSlider').disabled = false;
+      document.getElementById('animationStatus').textContent = `Loading initial data for ${selectedDistrict}...`;
+      updateAnimationSlider();
+      // Load initial year and wait for it to complete
+      await loadDistrictAnimationData(selectedDistrict, currentAnimationYear);
+      // Enable play button after data is loaded
+      document.getElementById('playBtn').disabled = false;
+      document.getElementById('animationStatus').textContent = `Ready to animate: ${selectedDistrict}`;
+    } else {
+      animationDistrict = null;
+      document.getElementById('playBtn').disabled = true;
+      document.getElementById('animationSlider').disabled = true;
+      document.getElementById('animationStatus').textContent = 'Select a district to start animation';
+      // Remove animation layer and legend
+      if (map._animationLayer && map.hasLayer(map._animationLayer)) {
+        map.removeLayer(map._animationLayer);
+      }
+      if (animationLegend) {
+        map.removeControl(animationLegend);
+        animationLegend = null;
+      }
+      if (isPlaying) {
+        toggleDistrictAnimation(); // Stop if playing
+      }
+    }
+  });
+}
+
+// Update animation slider based on available years
+function updateAnimationSlider() {
+  const slider = document.getElementById('animationSlider');
+  if (!slider || availableYears.length === 0) return;
+  
+  const minYear = Math.min(...availableYears);
+  const maxYear = Math.max(...availableYears);
+  slider.min = String(minYear);
+  slider.max = String(maxYear);
+  slider.value = String(currentAnimationYear || minYear);
+  
+  // Add slider change handler (only once)
+  if (!slider.hasAttribute('data-handler-attached')) {
+    slider.setAttribute('data-handler-attached', 'true');
+    slider.addEventListener('input', (e) => {
+      if (!isPlaying) {
+        const year = parseInt(e.target.value);
+        currentAnimationYear = year;
+        updateAnimationYearDisplay(year);
+        if (animationDistrict) {
+          loadDistrictAnimationData(animationDistrict, year);
+        }
+      }
+    });
+  }
+}
+
+// Toggle district animation play/pause
+function toggleDistrictAnimation() {
+  const playBtn = document.getElementById('playBtn');
+  if (!playBtn || !animationDistrict) return;
+  
+  if (isPlaying) {
+    // Stop animation
+    clearInterval(animationInterval);
+    playBtn.textContent = '▶️ Play';
+    playBtn.classList.remove('playing');
+    isPlaying = false;
+    document.getElementById('animationStatus').textContent = `Paused: ${animationDistrict}`;
+  } else {
+    // Start animation
+    if (!currentAnimationYear) {
+      currentAnimationYear = Math.min(...availableYears);
+    }
+    playBtn.textContent = '⏸️ Pause';
+    playBtn.classList.add('playing');
+    isPlaying = true;
+    document.getElementById('animationStatus').textContent = `Playing: ${animationDistrict}`;
+    
+    // Animation speed: 1 second per year
+    animationInterval = setInterval(async () => {
+      const minYear = Math.min(...availableYears);
+      const maxYear = Math.max(...availableYears);
+      
+      currentAnimationYear++;
+      if (currentAnimationYear > maxYear) {
+        currentAnimationYear = minYear; // Loop back to start
+      }
+      
+      updateAnimationYearDisplay(currentAnimationYear);
+      document.getElementById('animationSlider').value = String(currentAnimationYear);
+      // Wait for data to load before continuing
+      await loadDistrictAnimationData(animationDistrict, currentAnimationYear);
+    }, 1000); // 1 second per frame
+  }
+}
+
+// Update year display
+function updateAnimationYearDisplay(year) {
+  const yearDisplay = document.getElementById('currentAnimationYear');
+  if (yearDisplay) {
+    yearDisplay.textContent = year;
+  }
+}
+
+// Load LULC data for a specific district and year for animation
+async function loadDistrictAnimationData(district, year) {
+  try {
+    const cacheKey = `${district}_${year}`;
+    
+    // Check cache first
+    if (animationDataCache[cacheKey]) {
+      const cachedData = animationDataCache[cacheKey];
+      await renderAnimationLayer(cachedData.features, year, district);
+      return;
+    }
+    
+    // Show loading status if not playing (to avoid flickering during animation)
+    if (!isPlaying) {
+      document.getElementById('animationStatus').textContent = `Loading ${district} ${year}...`;
+    }
+    
+    // Fetch metadata for district ID mapping
+    let metadata = metadataCache;
+    if (!metadata) {
+      const metadataRes = await fetch(`${API_BASE}/metadata`);
+      if (!metadataRes.ok) throw new Error("Failed to fetch metadata");
+      metadata = await metadataRes.json();
+      metadataCache = metadata;
+    }
+    
+    // Get district ID
+    const districtNameToId = {};
+    metadata.district_boundary.features.forEach((f) => {
+      const name = f.properties.name?.toUpperCase();
+      if (name) districtNameToId[name] = f.properties.id;
+    });
+    
+    const districtId = districtNameToId[district.toUpperCase()];
+    if (!districtId) {
+      console.error(`District ID not found for: ${district}`);
+      return;
+    }
+    
+    // Fetch LULC data for this district and year
+    const url = `${API_BASE}/lulc-geojson?district_id=${districtId}&year=${year}`;
+    const lulcRes = await fetch(url);
+    if (!lulcRes.ok) throw new Error("Failed to fetch LULC data");
+    const lulcData = await lulcRes.json();
+    
+    // Cache the data
+    animationDataCache[cacheKey] = {
+      features: lulcData.features,
+      year: year,
+      district: district
+    };
+    
+    // Render on map with legend
+    await renderAnimationLayer(lulcData.features, year, district);
+    
+  } catch (error) {
+    console.error(`Failed to load animation data for ${district} ${year}:`, error);
+    document.getElementById('animationStatus').textContent = `Error loading data: ${error.message}`;
+    throw error; // Re-throw to allow caller to handle
+  }
+}
+
+// Render animation layer on map with legend
+async function renderAnimationLayer(features, year, district) {
+  // Remove previous animation layer (but keep regular LULC layers if any)
+  const existingAnimationLayer = map._animationLayer;
+  if (existingAnimationLayer && map.hasLayer(existingAnimationLayer)) {
+    map.removeLayer(existingAnimationLayer);
+  }
+  
+  // Remove previous animation legend
+  if (animationLegend) {
+    map.removeControl(animationLegend);
+    animationLegend = null;
+  }
+  
+  if (!features || features.length === 0) {
+    console.log(`No features to render for year ${year}`);
+    return;
+  }
+  
+  // Get type mapping
+  const uniqueIds = [...new Set(features.map(f => Number(f.properties.type_id)))];
+  const typeMapping = {};
+  
+  // Check cache first
+  const missingIds = [];
+  uniqueIds.forEach(id => {
+    if (typeMappingCache[id]) {
+      typeMapping[id] = typeMappingCache[id];
+    } else {
+      missingIds.push(id);
+    }
+  });
+  
+  // Fetch missing type names if needed (wait for it)
+  if (missingIds.length > 0) {
+    try {
+      const typeRes = await fetch(`${API_BASE}/lulc-types?${missingIds.map(id => `type_id=${id}`).join('&')}`);
+      if (typeRes.ok) {
+        const types = await typeRes.json();
+        Object.assign(typeMapping, types);
+        Object.assign(typeMappingCache, types);
+      }
+    } catch (err) {
+      console.error('Failed to fetch type names:', err);
+    }
+  }
+  
+  // Define colors (same as main LULC function)
+  const forestTypes = [51, 52, 61, 62, 71, 72, 81, 82, 91, 92, 181, 182, 183, 186];
+  const getGroupColor = (typeId, typeName) => {
+    const typeIdNum = Number(typeId);
+    const typeNameLower = (typeName || '').toLowerCase();
+    const croplandKeywords = ['rainfed', 'cropland', 'sparse vegetation', 'sparse', 'vegetation'];
+    
+    if (forestTypes.includes(typeIdNum)) {
+      return '#4c7300'; // Forest green
+    } else if (croplandKeywords.some(keyword => typeNameLower.includes(keyword))) {
+      return '#ff9800'; // Cropland orange
+    } else {
+      return '#ffc107'; // Others yellow
+    }
+  };
+  
+  // Simplify geometries for performance
+  const simplifiedFeatures = features.map(f => simplifyGeometry(f, 0.0003));
+  
+  // Create layer
+  const animationLayer = L.geoJSON(
+    { type: "FeatureCollection", features: simplifiedFeatures },
+    {
+      style: (f) => {
+        const typeId = Number(f.properties.type_id);
+        const typeName = typeMapping[typeId] || "Unknown";
+        return {
+          color: "#333",
+          weight: forestTypes.includes(typeId) ? 0.5 : 0,
+          fillColor: getGroupColor(typeId, typeName),
+          fillOpacity: 0.6,
+        };
+      },
+      onEachFeature: (f, layer) => {
+        const typeId = Number(f.properties.type_id);
+        const typeName = typeMapping[typeId] || "Unknown";
+        const area = f.properties.area?.toFixed(2) || "N/A";
+        layer.on('click', function() {
+          this.bindPopup(
+            `<b>Type:</b> ${typeName}<br>
+            <b>Area:</b> ${area} ha<br>
+            <b>Year:</b> ${year}`
+          ).openPopup();
+        });
+      },
+      renderer: L.canvas({ padding: 0.5 })
+    }
+  );
+  
+  // Add to map and store reference
+  animationLayer.addTo(map);
+  map._animationLayer = animationLayer;
+  
+  // Fit bounds to the district
+  if (features.length > 0) {
+    map.fitBounds(animationLayer.getBounds(), { padding: [20, 20] });
+  }
+  
+  // Create and add legend
+  createAnimationLegend(features, typeMapping, year, district);
+}
+
+// Create legend for animation
+function createAnimationLegend(features, typeMapping, year, district) {
+  // Remove existing animation legend
+  if (animationLegend) {
+    map.removeControl(animationLegend);
+  }
+  
+  // Build unique types from features
+  const uniqueTypes = {};
+  const skipTypes = new Set([71, 72, 81, 82]);
+  const forestTypes = [51, 52, 61, 62, 71, 72, 81, 82, 91, 92, 181, 182, 183, 186];
+  
+  for (let i = 0; i < features.length; i++) {
+    const t = Number(features[i].properties.type_id);
+    if (skipTypes.has(t)) continue;
+    if (!uniqueTypes[t]) uniqueTypes[t] = typeMapping[t] || "Unknown";
+  }
+  
+  // Separate into forest, cropland, and others groups
+  const forestGroup = {};
+  const croplandGroup = {};
+  const othersGroup = {};
+  
+  const croplandKeywords = ['rainfed', 'cropland', 'sparse vegetation', 'sparse', 'vegetation'];
+  
+  for (const [code, label] of Object.entries(uniqueTypes)) {
+    const codeNum = Number(code);
+    const labelLower = label.toLowerCase();
+    
+    if (forestTypes.includes(codeNum)) {
+      forestGroup[code] = label;
+    } else if (croplandKeywords.some(keyword => labelLower.includes(keyword))) {
+      croplandGroup[code] = label;
+    } else {
+      othersGroup[code] = label;
+    }
+  }
+  
+  animationLegend = L.control({ position: "bottomright" });
+  animationLegend.onAdd = function (map) {
+    const div = L.DomUtil.create("div", "info legend");
+    let html = `<h4>${district} - ${year}</h4>`;
+    
+    // Start container for two-column layout
+    html += `<div class="legend-groups-container">`;
+    
+    // Forest group
+    if (Object.keys(forestGroup).length > 0) {
+      html += `<div class="legend-group">
+        <div class="legend-group-header" onclick="toggleLegendGroup(this)">
+          <span class="legend-arrow">▼</span>
+          <span class="legend-color-box" style="background-color: #4c7300; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
+          <strong style="color: #4c7300;">Forest</strong>
+        </div>
+        <div class="legend-group-content" style="display: block;">
+      `;
+      for (const [code, label] of Object.entries(forestGroup)) {
+        html += `<div style="margin-left: 15px; margin-bottom: 4px;">
+          ${label}
+        </div>`;
+      }
+      html += `</div></div>`;
+    }
+    
+    // Cropland group
+    if (Object.keys(croplandGroup).length > 0) {
+      html += `<div class="legend-group">
+        <div class="legend-group-header" onclick="toggleLegendGroup(this)">
+          <span class="legend-arrow">▼</span>
+          <span class="legend-color-box" style="background-color: #ff9800; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
+          <strong style="color: #ff9800;">Cropland</strong>
+        </div>
+        <div class="legend-group-content" style="display: block;">
+      `;
+      for (const [code, label] of Object.entries(croplandGroup)) {
+        html += `<div style="margin-left: 15px; margin-bottom: 4px;">
+          ${label}
+        </div>`;
+      }
+      html += `</div></div>`;
+    }
+    
+    // Others group
+    if (Object.keys(othersGroup).length > 0) {
+      html += `<div class="legend-group">
+        <div class="legend-group-header" onclick="toggleLegendGroup(this)">
+          <span class="legend-arrow">▼</span>
+          <span class="legend-color-box" style="background-color: #ffc107; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
+          <strong style="color: #ffc107;">Others</strong>
+        </div>
+        <div class="legend-group-content" style="display: block;">
+      `;
+      for (const [code, label] of Object.entries(othersGroup)) {
+        html += `<div style="margin-left: 15px; margin-bottom: 4px;">
+          ${label}
+        </div>`;
+      }
+      html += `</div></div>`;
+    }
+    
+    // Close container
+    html += `</div>`;
+    
+    div.innerHTML = html;
+    return div;
+  };
+  animationLegend.addTo(map);
+}
+
+// Helper function to simplify geometries using turf.js
+function simplifyGeometry(feature, tolerance = 0.0001) {
+  if (!feature.geometry) {
+    return feature;
+  }
+  
+  // Check if turf.js is available
+  if (typeof window.turf === 'undefined' || typeof window.turf.simplify !== 'function') {
+    console.warn('Turf.js not available, skipping geometry simplification');
+    return feature;
+  }
+  
+  try {
+    // Simplify geometry to reduce complexity
+    // Lower tolerance = more simplification (fewer points)
+    const simplified = window.turf.simplify(feature.geometry, { 
+      tolerance: tolerance, 
+      highQuality: false // false is faster
+    });
+    return {
+      ...feature,
+      geometry: simplified
+    };
+  } catch (e) {
+    // Silently return original if simplification fails
+    return feature;
+  }
+}
+
 // On page load: populate districts and configure year slider from backend
 window.onload = () => {
   populateDistrictCheckboxes();
   initializeRightPanel();
-  // initializeAnimationControls(); // Commented out - load animation later
   
   // Load available years and configure slider
   fetch(`${API_BASE}/years`)
@@ -1850,7 +2531,16 @@ window.onload = () => {
         yearSlider.step = "1";
         yearSlider.value = String(maxYear);
         yearDisplay.textContent = String(maxYear);
+        
+        // Initialize animation controls after districts are populated
+        setTimeout(() => {
+          populateAnimationDistrictSelect();
+          updateAnimationSlider();
+        }, 100);
       }
     })
     .catch((err) => console.error("Failed to load years:", err));
 };
+
+// Make animation function globally available
+window.toggleDistrictAnimation = toggleDistrictAnimation;

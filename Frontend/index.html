@@ -89,18 +89,24 @@
         </button>
       </div>
       
-      <!-- Animation Controls -->
-      <!-- <div class="animation-controls">
-        <h3>Carbon Sink Timeline</h3>
+      <!-- District Animation Controls -->
+      <div class="animation-controls">
+        <h3>District Time Series Animation</h3>
+        <label><b>Select District for Animation:</b></label>
+        <select id="animationDistrictSelect" style="width: 100%; padding: 8px; margin-top: 5px; margin-bottom: 10px; border-radius: 4px; border: 1px solid #ccc;">
+          <option value="">-- Select a district --</option>
+        </select>
         <div class="animation-row">
-          <button id="initAnimationBtn" onclick="initializeAnimation()" class="init-btn">🚀 Load Animation</button>
-          <button id="playBtn" onclick="toggleAnimation()" class="play-btn" style="display: none;">▶️ Play</button>
-          <span id="currentYear" style="display: none;">2022</span>
+          <button id="playBtn" onclick="toggleDistrictAnimation()" class="play-btn" disabled>▶️ Play</button>
+          <span id="currentAnimationYear" style="margin-left: 10px; font-weight: bold;">--</span>
         </div>
-        <div class="year-slider-container" style="display: none;">
-          <input type="range" id="animationSlider" min="2012" max="2022" value="2022" step="1">
+        <div class="year-slider-container">
+          <input type="range" id="animationSlider" min="2012" max="2022" value="2022" step="1" disabled>
         </div>
-      </div> -->
+        <div style="margin-top: 10px; font-size: 12px; color: #666;">
+          <span id="animationStatus">Select a district to start animation</span>
+        </div>
+      </div>
     </div>
     <div id="map"></div>
     
