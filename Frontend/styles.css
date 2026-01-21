@@ -38,7 +38,7 @@ body {
     position: absolute;
     top: 0;
     left: 0;
-    width: 275px;
+    width: 300px !important;
     height: 100%;
     background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(10px);
@@ -117,6 +117,36 @@ body {
     image-rendering: crisp-edges;
 }
 
+/* Leaflet Controls - Ensure proper z-index */
+.leaflet-control-zoom,
+.leaflet-draw,
+.leaflet-draw-toolbar,
+.leaflet-control-layers {
+    z-index: 800 !important;
+}
+
+.leaflet-top,
+.leaflet-bottom {
+    z-index: 800 !important;
+}
+
+/* Leaflet Draw Controls - Ensure visibility */
+.leaflet-draw-toolbar {
+    display: block !important;
+}
+
+.leaflet-draw-section {
+    display: block !important;
+}
+
+.leaflet-draw-toolbar a {
+    display: block !important;
+    width: 30px !important;
+    height: 30px !important;
+    background-color: white !important;
+    border: 2px solid rgba(0,0,0,0.2) !important;
+}
+
 /* ==========================================================================
    Form Elements
    ========================================================================== */
@@ -152,6 +182,7 @@ button {
     line-height: 1.4;
     max-width: 500px;
     border: 1px solid rgba(0, 0, 0, 0.1);
+    z-index: 500 !important;
 }
 
 .legend-groups-container {
@@ -595,7 +626,7 @@ canvas[id*="ChartCanvas"] {
     font-size:  24px;
     cursor: pointer;
     box-shadow: none;              /* remove shadow */
-    z-index: 1000;
+    z-index: 900;
     transition: transform 0.2s ease;
     display: flex;
     align-items: center;
@@ -642,6 +673,7 @@ canvas[id*="ChartCanvas"] {
   position: relative;
   display: block;
   width: 100%;
+  z-index: 5;
 }
 
 #lulcFilter-wrapper::after {
@@ -668,6 +700,7 @@ canvas[id*="ChartCanvas"] {
 /* Multiselect Wrapper */
 .multiselect-wrapper {
   position: relative;
+  z-index: 10;
 }
 
 /* District Dropdown Button Styles */
@@ -712,8 +745,8 @@ canvas[id*="ChartCanvas"] {
   display: none;
   position: absolute;
   left: 0;
-  z-index: 999;
-  width: 94%;
+  z-index: 1100;
+  width: 100%;
   min-width: 250px;
   max-width: 400px;
   background: #fff;
@@ -733,6 +766,29 @@ canvas[id*="ChartCanvas"] {
 }
 
 /* ==========================================================================
+   Z-Index Hierarchy (Fixing Layer Stacking)
+   ========================================================================== */
+
+/*
+  Z-Index Stack (lowest to highest):
+  - Map base: 0
+  - Legend: 500
+  - Leaflet controls: 800
+  - Chart icon: 900
+  - Controls panel: 1000
+  - Multiselect dropdown: 1100
+  - Right panel: 2000
+*/
+
+.leaflet-pane {
+    z-index: 400 !important;
+}
+
+.leaflet-map-pane {
+    z-index: 0 !important;
+}
+
+/* ==========================================================================
    Utility Classes
    ========================================================================== */
 
@@ -747,17 +803,23 @@ canvas[id*="ChartCanvas"] {
    Responsive Design
    ========================================================================== */
 
+/* Tablet and below */
 @media (max-width: 768px) {
     #controls {
         width: 100%;
         height: auto;
         max-height: 50vh;
         position: relative;
+        z-index: 1000;
     }
     
     #map {
         margin-left: 0;
         height: 50vh;
+    }
+    
+    .leaflet-left {
+        left: 10px !important;
     }
     
     .right-panel {
@@ -773,6 +835,7 @@ canvas[id*="ChartCanvas"] {
     }
 }
 
+/* Mobile */
 @media (max-width: 480px) {
     #controls h2 {
         font-size: 1.2em;
@@ -788,16 +851,24 @@ canvas[id*="ChartCanvas"] {
     }
 }
 
+/* Desktop - ensure proper sizing */
+@media (min-width: 769px) {
+    #controls {
+        width: 300px;
+    }
+    
+    #map {
+        margin-left: 300px;
+    }
+}
+
 /* ==========================================================================
    Performance Optimizations
    ========================================================================== */
 
 /* Enable GPU acceleration for animations */
-.right-panel,
-#map,
-button {
+.right-panel {
     will-change: auto;
-    transform: translateZ(0);
     -webkit-backface-visibility: hidden;
     backface-visibility: hidden;
 }
@@ -809,13 +880,7 @@ body {
     -moz-osx-font-smoothing: grayscale;
 }
 
-/* Reduce repaint/reflow */
-* {
-    -webkit-transform: translateZ(0);
-    -moz-transform: translateZ(0);
-    -ms-transform: translateZ(0);
-    -o-transform: translateZ(0);
-}
+/* Reduce repaint/reflow - removed global transform as it causes z-index issues */
 
 /* ==========================================================================
    Accessibility
