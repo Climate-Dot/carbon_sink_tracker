@@ -278,15 +278,63 @@ async def get_years():
 
 @app.get("/lulc-geojson")
 def get_lulc(district_id: list[str] = Query(...), year: int = Query(...)):
-    """Return GeoJSON of LULC polygons filtered by district(s) and year.
-
-    Accepts one or many district_id query params; dynamically builds the
-    WHERE clause using parameterized placeholders to avoid injection.
-    Uses WKT conversion for Geography types (STAsGeoJSON not available).
+    """
+    Return GeoJSON of LULC polygons filtered by district(s) and year.
+    
+    **FAST PATH**: Serves pre-generated GeoJSON files (if available)
+    **FALLBACK**: Queries database and converts WKT on-the-fly
+    
+    Pre-generated files are 10-100x faster than database queries.
+    Run Backend/generate_lulc_files.py to create them.
     """
     import time
     start_time = time.time()
     logger.info(f"LULC request: {len(district_id)} districts, year {year}")
+    
+    # FAST PATH: Try to serve from pre-generated files
+    static_lulc_path = os.path.join(os.path.dirname(__file__), "..", "static", "lulc")
+    
+    # If single district, try to load pre-generated file
+    if len(district_id) == 1:
+        file_path = os.path.join(static_lulc_path, str(year), f"district_{district_id[0]}.geojson")
+        
+        if os.path.exists(file_path):
+            logger.info(f"   ✓ Serving pre-generated file: {file_path}")
+            try:
+                with open(file_path, 'r') as f:
+                    geojson = json.load(f)
+                total_time = time.time() - start_time
+                logger.info(f"✅ File served in {total_time:.3f}s (pre-generated)")
+                return geojson
+            except Exception as e:
+                logger.warning(f"   ⚠️  Failed to load pre-generated file: {e}, falling back to database")
+    
+    # If multiple districts, try to merge pre-generated files
+    if len(district_id) > 1:
+        try:
+            merged_features = []
+            all_files_exist = True
+            
+            for dist_id in district_id:
+                file_path = os.path.join(static_lulc_path, str(year), f"district_{dist_id}.geojson")
+                if os.path.exists(file_path):
+                    with open(file_path, 'r') as f:
+                        data = json.load(f)
+                        merged_features.extend(data.get("features", []))
+                else:
+                    all_files_exist = False
+                    break
+            
+            if all_files_exist and merged_features:
+                geojson = {"type": "FeatureCollection", "features": merged_features}
+                total_time = time.time() - start_time
+                logger.info(f"✅ Merged {len(district_id)} pre-generated files in {total_time:.3f}s")
+                return geojson
+        except Exception as e:
+            logger.warning(f"   ⚠️  Failed to merge pre-generated files: {e}, falling back to database")
+    
+    # FALLBACK PATH: Query database (slower)
+    logger.info("   ⏳ No pre-generated files found, querying database...")
     
     conn = None
     cursor = None
@@ -359,7 +407,7 @@ def get_lulc(district_id: list[str] = Query(...), year: int = Query(...)):
 
         geojson = {"type": "FeatureCollection", "features": features}
         total_time = time.time() - start_time
-        logger.info(f"✅ LULC endpoint completed in {total_time:.2f}s")
+        logger.info(f"✅ LULC endpoint completed in {total_time:.2f}s (database fallback)")
         return geojson
 
     except Exception as e:

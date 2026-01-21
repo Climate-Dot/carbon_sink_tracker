@@ -2,39 +2,81 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Carbon Sink Tracker</title>
-    <meta name="description" content="Carbon Sink Tracker - Interactive Land Use Land Cover mapping and analytics for Gujarat" />
-    <meta name="keywords" content="carbon sink, LULC, land use, land cover, Gujarat, mapping, analytics" />
-    <meta name="author" content="Carbon Sink Tracker" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    
+    <!-- Primary Meta Tags -->
+    <title>Carbon Sink Tracker - Gujarat LULC Analysis</title>
+    <meta name="title" content="Carbon Sink Tracker - Gujarat LULC Analysis" />
+    <meta name="description" content="Interactive Land Use Land Cover mapping and carbon emissions analytics for Gujarat. Visualize forest, wetland, and cropland changes over time with advanced geospatial tools." />
+    <meta name="keywords" content="carbon sink, LULC, land use, land cover, Gujarat, mapping, analytics, forest cover, wetland, carbon emissions, geospatial, GIS" />
+    <meta name="author" content="Carbon Sink Tracker" />
+    <meta name="robots" content="index, follow" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Carbon Sink Tracker - Gujarat LULC Analysis" />
+    <meta property="og:description" content="Interactive Land Use Land Cover mapping and carbon emissions analytics for Gujarat" />
+    <meta property="og:site_name" content="Carbon Sink Tracker" />
+    
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Carbon Sink Tracker - Gujarat LULC Analysis" />
+    <meta name="twitter:description" content="Interactive Land Use Land Cover mapping and carbon emissions analytics for Gujarat" />
+    
+    <!-- Security Headers -->
+    <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests" />
+    
+    <!-- Performance -->
+    <link rel="preconnect" href="https://unpkg.com" crossorigin />
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="dns-prefetch" href="https://unpkg.com" />
+    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net" />
 
     <!-- Leaflet CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Quicksand&display=swap"
-      rel="stylesheet"
-    />
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" integrity="sha384-CfAJOXg9MYvC8MZ2J8UwAUy/+sAIEljRLqTlqzjvZyNpvqJwUc1nDcGVkCXcCTuL" crossorigin="anonymous" />
+    
+    <!-- Fonts with display=swap for better performance -->
+    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600&display=swap" rel="stylesheet" />
+    
+    <!-- Chart.js - deferred for better initial page load -->
+    <link rel="preload" href="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" as="script" />
+    <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <!-- Dynamic base path for static files -->
     <script>
-      // Detect protocol and set base path (declare once, used globally)
-      window.isFileProtocol = window.location.protocol === 'file:';
-      window.STATIC_BASE = window.isFileProtocol ? '' : '/static';
-      // Load CSS and set favicon with correct path
-      const cssPath = window.isFileProtocol ? 'styles.css' : '/static/styles.css';
-      const faviconPath = window.isFileProtocol ? 'logo.svg' : '/static/logo.svg';
-      // Create and add CSS link
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = cssPath;
-      document.head.appendChild(link);
-      // Create and add favicon
-      const favicon = document.createElement('link');
-      favicon.rel = 'icon';
-      favicon.type = 'image/svg+xml';
-      favicon.href = faviconPath;
-      document.head.appendChild(favicon);
+      // Environment detection and path configuration
+      (function() {
+        'use strict';
+        window.isFileProtocol = window.location.protocol === 'file:';
+        window.STATIC_BASE = window.isFileProtocol ? '' : '/static';
+        
+        // Load CSS with correct path
+        const cssPath = window.isFileProtocol ? 'styles.css' : '/static/styles.css';
+        const faviconPath = window.isFileProtocol ? 'logo.svg' : '/static/logo.svg';
+        
+        // Preload critical CSS
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = cssPath;
+        link.media = 'all';
+        document.head.appendChild(link);
+        
+        // Add favicon
+        const favicon = document.createElement('link');
+        favicon.rel = 'icon';
+        favicon.type = 'image/svg+xml';
+        favicon.href = faviconPath;
+        document.head.appendChild(favicon);
+        
+        // Add apple touch icon for iOS
+        const appleTouchIcon = document.createElement('link');
+        appleTouchIcon.rel = 'apple-touch-icon';
+        appleTouchIcon.href = faviconPath;
+        document.head.appendChild(appleTouchIcon);
+      })();
     </script>
   </head>
   <body>
@@ -195,37 +237,81 @@
     <!-- Chart Icon Button -->
     <button id="chart-icon" class="chart-icon">📊</button>
     
-    <!-- Leaflet JS -->
-    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
-    <!-- Configure API base URL (reusing static paths already set) -->
+    <!-- Leaflet JS - with integrity checks and deferred loading -->
+    <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
+    <script defer src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js" crossorigin="anonymous"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js" crossorigin="anonymous"></script>
+    <!-- Configure API base URL -->
     <script>
-      // Set API base URL - empty string for production (same origin), localhost for local dev
-      if (window.isFileProtocol) {
-        // Opening file directly - use localhost backend
-        window.API_BASE = 'http://localhost:8000';
-      } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        // Local development server - use localhost backend
-        window.API_BASE = 'http://localhost:8000';
-      } else {
-        // Production (Render) - use full production URL
-        window.API_BASE = 'https://carbon-sink-tracker-1.onrender.com';
-      }
-    </script>
-    <script>
-      // Set logo path and load main.js
-      window.addEventListener('DOMContentLoaded', function() {
-        const logoImg = document.getElementById('logo');
-        if (logoImg) {
-          // Use relative path for file://, absolute path for server
-          logoImg.src = window.isFileProtocol ? 'logo.svg' : '/static/logo.svg';
+      // API endpoint configuration with environment detection
+      (function() {
+        'use strict';
+        const isLocal = window.location.hostname === 'localhost' || 
+                       window.location.hostname === '127.0.0.1' ||
+                       window.isFileProtocol;
+        
+        // Set API base URL
+        window.API_BASE = isLocal 
+          ? 'http://localhost:8000' 
+          : 'https://carbon-sink-tracker-1.onrender.com';
+        
+        // Log environment (remove in production if not needed)
+        if (isLocal) {
+          console.info('🔧 Running in development mode');
+        } else {
+          console.info('🚀 Running in production mode');
         }
-      });
-      // Dynamically load main.js with correct path
-      const script = document.createElement('script');
-      script.src = window.isFileProtocol ? 'main.js' : '/static/main.js';
-      document.body.appendChild(script);
+      })();
     </script>
+    <script>
+      // Initialize application with proper loading sequence
+      (function() {
+        'use strict';
+        
+        // Set logo path when DOM is ready
+        window.addEventListener('DOMContentLoaded', function() {
+          const logoImg = document.getElementById('logo');
+          if (logoImg) {
+            logoImg.src = window.isFileProtocol ? 'logo.svg' : '/static/logo.svg';
+            logoImg.onerror = function() {
+              console.warn('Logo failed to load');
+              this.style.display = 'none';
+            };
+          }
+        });
+        
+        // Load main application script
+        function loadMainScript() {
+          const script = document.createElement('script');
+          script.src = window.isFileProtocol ? 'main.js' : '/static/main.js';
+          script.defer = true;
+          script.onerror = function() {
+            console.error('Failed to load main application script');
+            document.body.innerHTML += '<div style="padding: 20px; color: red; text-align: center;">Failed to load application. Please refresh the page.</div>';
+          };
+          document.body.appendChild(script);
+        }
+        
+        // Load after other deferred scripts are ready
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', loadMainScript);
+        } else {
+          loadMainScript();
+        }
+      })();
+    </script>
+    
+    <!-- Service Worker for offline support (optional, uncomment if needed) -->
+    <!-- <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/sw.js').then(function(registration) {
+            console.log('ServiceWorker registration successful');
+          }, function(err) {
+            console.log('ServiceWorker registration failed: ', err);
+          });
+        });
+      }
+    </script> -->
   </body>
 </html>

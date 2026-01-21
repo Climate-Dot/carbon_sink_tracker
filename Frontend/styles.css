@@ -1,13 +1,38 @@
+/**
+ * Carbon Sink Tracker - Styles
+ * Production-ready CSS with optimizations
+ * Version: 1.0.0
+ */
+
+/* ==========================================================================
+   Base Styles & Reset
+   ========================================================================== */
+
 html,
 body,
 #map {
     height: 100%;
     margin: 0;
+    padding: 0;
 }
 
 * {
-    font-family: 'Quicksand', sans-serif;
+    box-sizing: border-box;
 }
+
+body {
+    font-family: 'Quicksand', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+    color: #333;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+}
+
+/* ==========================================================================
+   Layout - Control Panel
+   ========================================================================== */
 
 #controls {
     position: absolute;
@@ -15,14 +40,36 @@ body,
     left: 0;
     width: 275px;
     height: 100%;
-    background: rgba(255, 255, 255, 0.9);
-    padding: 20px 15px;
-    box-shadow: 2px 0 6px rgba(0, 0, 0, 0.2);
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    padding: 20px 15px 20px 15px;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
     z-index: 1000;
     display: flex;
     flex-direction: column;
     gap: 10px;
-    padding-top: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Custom scrollbar for controls */
+#controls::-webkit-scrollbar {
+    width: 6px;
+}
+
+#controls::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+#controls::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 3px;
+}
+
+#controls::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.3);
 }
 
 #header-container {
@@ -45,31 +92,66 @@ body,
     opacity: 0.9;
 }
 
+/* ==========================================================================
+   Layout - Map
+   ========================================================================== */
+
 #map {
     margin-left: 300px;
     margin-right: 0;
-    transition: margin-right 0.3s ease;
+    transition: margin-right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: margin-right;
 }
 
 #map.panel-open {
     margin-right: 100%;
 }
 
+/* Improve Leaflet performance */
+.leaflet-container {
+    font-family: inherit;
+}
+
+.leaflet-tile {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+}
+
+/* ==========================================================================
+   Form Elements
+   ========================================================================== */
+
 label {
     font-size: 14px;
+    font-weight: 500;
     display: flex;
     flex-direction: column;
     margin-bottom: 2px;
+    color: #333;
 }
 
+input,
+select,
+button {
+    font-family: inherit;
+    font-size: inherit;
+}
+
+/* ==========================================================================
+   Legend
+   ========================================================================== */
+
 .info.legend {
-    background: rgba(255, 255, 255, 0.9);
-    padding: 10px;
-    box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    padding: 12px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
     border-radius: 8px;
     font-size: 12px;
-    line-height: 15px;
+    line-height: 1.4;
     max-width: 500px;
+    border: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .legend-groups-container {
@@ -133,19 +215,45 @@ label {
     overflow-y: auto;
 }
 
+/* ==========================================================================
+   Buttons
+   ========================================================================== */
+
 button {
     padding: 10px 20px;
     font-size: 16px;
+    font-weight: 500;
     min-width: 100px;
     border-radius: 6px;
     background-color: #3f51b5;
     color: white;
     border: none;
     cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
-button:hover {
+button:hover:not(:disabled) {
     background-color: #2c3e9d;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+button:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+button:focus-visible {
+    outline: 2px solid #3f51b5;
+    outline-offset: 2px;
 }
 
 /* Button-specific styles */
@@ -251,46 +359,27 @@ button:hover {
     background-color: #138496;
 }
 
-#currentYear {
-    font-weight: bold;
-    font-size: 1.2em;
-    color: #495057;
+.animation-status {
+    font-size: 12px;
+    color: #666;
+    font-style: italic;
 }
 
-.year-slider-container {
-    margin-bottom: 15px;
-}
-
-.year-slider-container input[type="range"] {
-    width: 100%;
-    height: 6px;
-    border-radius: 3px;
-    background: #ddd;
-    outline: none;
-}
-
-.year-slider-container input[type="range"]::-webkit-slider-thumb {
-    appearance: none;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: #007bff;
-    cursor: pointer;
-} */
-
-/* Right Panel Styles */
+/* --- Right panel (charts/graphs slider) --- */
 .right-panel {
     position: fixed;
     top: 0;
     right: -100%;
-    width: calc(100% - 300px);
+    width: 100%;
+    max-width: 600px;
     height: 100%;
-    background: rgba(255, 255, 255, 0.95);
-    box-shadow: -2px 0 6px rgba(0, 0, 0, 0.2);
-    z-index: 1000;
+    background: #fff;
+    box-shadow: -2px 0 8px rgba(0, 0, 0, 0.2);
+    z-index: 2000;
     transition: right 0.3s ease;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
 }
 
 .right-panel.open {
@@ -298,247 +387,185 @@ button:hover {
 }
 
 .panel-header {
+    background-color: #2f5577;
+    color: white;
+    padding: 15px 20px;
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    padding: 20px 15px;
-    border-bottom: 1px solid #e0e0e0;
-    background: #f8f9fa;
+    justify-content: space-between;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .panel-header h3 {
     margin: 0;
-    color: #333;
-    font-size: 18px;
+    font-size: 1.3em;
 }
 
 .close-btn {
     background: none;
     border: none;
-    font-size: 24px;
+    color: white;
+    font-size: 30px;
     cursor: pointer;
-    color: #666;
+    line-height: 1;
     padding: 0;
     width: 30px;
     height: 30px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 50%;
-    transition: background-color 0.2s;
+    transition: transform 0.2s;
+    min-width: unset;
 }
 
 .close-btn:hover {
-    background-color: #e0e0e0;
+    transform: scale(1.2);
+    background: none;
 }
 
 .panel-content {
     flex: 1;
-    padding: 10px 15px;
+    overflow: hidden;
+    padding: 20px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    overflow: hidden;
 }
 
+/* Graph Toggles (State / District tabs) */
 .graph-toggles {
     display: flex;
-    flex-direction: row;
     gap: 10px;
-}
-
-.state-graph-toggles {
-    display: flex;
-    gap: 8px;
     margin-bottom: 15px;
-    justify-content: center;
-}
-
-.state-graph-toggle {
-    padding: 8px 16px;
-    border: 2px solid #3f51b5;
-    background-color: transparent;
-    color: #3f51b5;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 500;
-    transition: all 0.3s ease;
-}
-
-.state-graph-toggle:hover {
-    background-color: #3f51b5;
-    color: white;
-}
-
-.state-graph-toggle.active {
-    background-color: #3f51b5;
-    color: white;
+    border-bottom: 2px solid #e0e0e0;
 }
 
 .graph-toggle {
-    padding: 12px 16px;
-    background-color: #f0f0f0;
-    color: #333;
-    border: 2px solid transparent;
-    border-radius: 8px;
+    background: none;
+    border: none;
+    padding: 10px 20px;
     cursor: pointer;
-    font-size: 14px;
-    font-weight: 500;
-    transition: all 0.2s ease;
-    text-align: center;
+    font-size: 16px;
+    color: #666;
+    border-bottom: 3px solid transparent;
+    transition: all 0.3s;
+    min-width: auto;
+    border-radius: 0;
 }
 
 .graph-toggle:hover {
-    background-color: #e0e0e0;
+    color: #2f5577;
+    background: rgba(47, 85, 119, 0.05);
+    transform: none;
+    box-shadow: none;
 }
 
 .graph-toggle.active {
-    background-color: #3f51b5;
-    color: white;
-    border-color: #3f51b5;
+    color: #2f5577;
+    border-bottom-color: #2f5577;
+    font-weight: 600;
 }
 
-.graph-container {
-    flex: 1;
-    min-height: 400px;
-    background: white;
-    border-radius: 8px;
-    padding: 20px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
+/* Graph Sections */
 .graph-section {
     display: none;
-    flex-direction: column;
     flex: 1;
     overflow: hidden;
+    flex-direction: column;
 }
 
 .graph-section.active {
     display: flex;
 }
 
-.graphs-container {
-    display: flex;
-    flex-direction: row;
-    gap: 15px;
-    height: calc(100vh - 140px);
-    max-height: calc(100vh - 140px);
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 10px;
-    align-items: flex-start;
-    justify-content: center;
-}
-
-.graph-chart-container {
-    flex: 1;
-    min-width: 500px;
-    max-width: 100%;
-    max-height: 100%;
-    background: white;
-    border-radius: 8px;
-    padding: 10px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-.chart-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin: 0 0 8px 0;
-    padding-bottom: 6px;
-    border-bottom: 1px solid #e0e0e0;
-}
-
-.graph-chart-container h4 {
-    margin: 0;
-    color: #333;
-    font-size: 12px;
-    font-weight: 600;
-    text-align: left;
-    flex: 1;
-}
-
-.download-graph-btn {
-    background: #2f5577;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    padding: 4px 10px;
-    font-size: 16px;
-    cursor: pointer;
-    transition: background-color 0.2s;
-    min-width: 36px;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.download-graph-btn:hover {
-    background: #1a3d5a;
-    transform: scale(1.05);
-}
-
-/* State graph container visibility */
-#state-forest-container,
-#state-wetland-container,
-#state-total-container {
-    display: none;
-}
-
-#state-forest-container.active,
-#state-wetland-container.active,
-#state-total-container.active {
-    display: flex;
-}
-
-/* District graph toggle buttons */
+/* Sub-toggles (Forest / Wetland / Total) */
+.state-graph-toggles,
 .district-graph-toggles {
     display: flex;
     gap: 8px;
     margin-bottom: 15px;
-    justify-content: center;
 }
 
+.state-graph-toggle,
 .district-graph-toggle {
-    padding: 8px 16px;
-    border: 2px solid #3f51b5;
-    background-color: transparent;
-    color: #3f51b5;
-    border-radius: 6px;
+    flex: 1;
+    background-color: #f0f0f0;
+    border: none;
+    padding: 8px 12px;
     cursor: pointer;
     font-size: 14px;
-    font-weight: 500;
-    transition: all 0.3s ease;
+    color: #555;
+    border-radius: 4px;
+    transition: all 0.3s;
+    min-width: auto;
 }
 
+.state-graph-toggle:hover,
 .district-graph-toggle:hover {
-    background-color: #3f51b5;
-    color: white;
+    background-color: #e0e0e0;
+    transform: none;
+    box-shadow: none;
 }
 
+.state-graph-toggle.active,
 .district-graph-toggle.active {
-    background-color: #3f51b5;
+    background-color: #2f5577;
     color: white;
+    font-weight: 600;
 }
 
-/* District graph container visibility */
-#district-forest-container,
-#district-wetland-container,
-#district-total-container {
-    display: none;
-}
-
-#district-forest-container.active,
-#district-wetland-container.active,
-#district-total-container.active {
+/* Graphs Container */
+.graphs-container {
+    position: relative;
+    flex: 1;
+    overflow: hidden;
     display: flex;
+    max-height: calc(100vh - 140px);
+    align-items: flex-start;
+}
+
+.graph-chart-container {
+    display: none;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    max-height: 100%;
+    overflow: hidden;
+}
+
+.graph-chart-container.active {
+    display: flex;
+}
+
+/* Chart Header with Download Button */
+.chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.chart-header h4 {
+    margin: 0;
+    font-size: 1.1em;
+    color: #333;
+}
+
+.download-graph-btn {
+    background: none;
+    border: 1px solid #ccc;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 16px;
+    border-radius: 4px;
+    transition: all 0.2s;
+    min-width: auto;
+}
+
+.download-graph-btn:hover {
+    background-color: #f0f0f0;
+    border-color: #999;
+    transform: none;
+    box-shadow: none;
 }
 
 #chartCanvas,
@@ -573,11 +600,13 @@ canvas[id*="ChartCanvas"] {
     display: flex;
     align-items: center;
     justify-content: center;
+    min-width: auto;
 }
 
 .chart-icon:hover {
     background-color: transparent; /* keep transparent on hover */
     transform: scale(1.05);
+    box-shadow: none;
 }
 
 /* --- UI Polish: Consistent control sizing and spacing --- */
@@ -616,55 +645,32 @@ canvas[id*="ChartCanvas"] {
 }
 
 #lulcFilter-wrapper::after {
-  content: '▼';
+  content: "▼";
   position: absolute;
-  right: 10px;
-  top: 60%;
+  right: 12px;
+  top: 50%;
   transform: translateY(-50%);
-  font-size: 10px;
+  font-size: 12px;
   color: #666;
   pointer-events: none;
-  z-index: 1;
 }
 
-/* Full-width dropdown trigger with accessible focus */
-#districtDropdownBtn {
-    width: 100%;
-    text-align: left;
-    outline: none;
-}
-#districtDropdownBtn:focus,
-#districtDropdownBtn:focus-visible {
-    box-shadow: 0 0 0 3px rgba(47, 85, 119, 0.25);
-}
-
-/* Spacing between groups */
-.multiselect-wrapper,
-#lulcFilter,
-#yearSliderContainer,
-.button-row {
-    margin-top: 12px;
+/* Legend Color Box */
+.legend-color-box {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  margin-right: 6px;
+  vertical-align: middle;
 }
 
-/* Year display styling */
-#yearDisplay {
-    background: #eef4f8;
-    color: #2f5577;
-    padding: 4px 10px;
-    border-radius: 9999px;
-    font-weight: 600;
-    min-width: 48px;
-    text-align: center;
-}
-
-
-
-/* Multiselect District Dropdown Styles */
+/* Multiselect Wrapper */
 .multiselect-wrapper {
   position: relative;
-  display: inline-block;
-  margin-bottom: 12px;
 }
+
+/* District Dropdown Button Styles */
 #districtDropdownBtn {
   background: #fff;
   color: #222;
@@ -676,18 +682,22 @@ canvas[id*="ChartCanvas"] {
   cursor: pointer;
   text-align: left;
   position: relative;
+  transition: all 0.2s ease;
 }
-
+#districtDropdownBtn:hover {
+  background-color: #f9f9f9;
+  border-color: #999;
+}
 #districtDropdownBtn::after {
-  content: '▼';
+  content: "▼";
   position: absolute;
-  right: 10px;
+  right: 12px;
   top: 50%;
   transform: translateY(-50%);
-  font-size: 10px;
+  font-size: 12px;
   color: #666;
-  pointer-events: none;
   transition: transform 0.2s ease;
+  pointer-events: none;
 }
 
 #districtDropdownBtn.dropdown-open::after {
@@ -720,4 +730,134 @@ canvas[id*="ChartCanvas"] {
   margin-bottom: 5px;
   font-size: 14px;
   cursor: pointer;
+}
+
+/* ==========================================================================
+   Utility Classes
+   ========================================================================== */
+
+.button-row {
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* ==========================================================================
+   Responsive Design
+   ========================================================================== */
+
+@media (max-width: 768px) {
+    #controls {
+        width: 100%;
+        height: auto;
+        max-height: 50vh;
+        position: relative;
+    }
+    
+    #map {
+        margin-left: 0;
+        height: 50vh;
+    }
+    
+    .right-panel {
+        max-width: 100%;
+    }
+    
+    .legend-groups-container {
+        grid-template-columns: 1fr;
+    }
+    
+    #district-checkboxes {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 480px) {
+    #controls h2 {
+        font-size: 1.2em;
+    }
+    
+    #logo {
+        width: 50px;
+    }
+    
+    button {
+        font-size: 14px;
+        padding: 8px 16px;
+    }
+}
+
+/* ==========================================================================
+   Performance Optimizations
+   ========================================================================== */
+
+/* Enable GPU acceleration for animations */
+.right-panel,
+#map,
+button {
+    will-change: auto;
+    transform: translateZ(0);
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+}
+
+/* Optimize font rendering */
+body {
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Reduce repaint/reflow */
+* {
+    -webkit-transform: translateZ(0);
+    -moz-transform: translateZ(0);
+    -ms-transform: translateZ(0);
+    -o-transform: translateZ(0);
+}
+
+/* ==========================================================================
+   Accessibility
+   ========================================================================== */
+
+/* Focus indicators for keyboard navigation */
+a:focus,
+button:focus,
+input:focus,
+select:focus {
+    outline: 2px solid #3f51b5;
+    outline-offset: 2px;
+}
+
+/* Screen reader only class */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+}
+
+/* ==========================================================================
+   Print Styles
+   ========================================================================== */
+
+@media print {
+    #controls,
+    .chart-icon,
+    .right-panel,
+    button {
+        display: none !important;
+    }
+    
+    #map {
+        margin-left: 0 !important;
+        width: 100% !important;
+        height: 100vh !important;
+    }
 }
