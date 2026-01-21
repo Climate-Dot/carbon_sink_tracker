@@ -73,6 +73,37 @@ L.control
 // Start time to log load durations
 const st = new Date().getTime();
 
+// LULC grouping helpers for legend highlighting
+const LULC_FOREST_TYPES = [51, 52, 61, 62, 71, 72, 81, 82, 91, 92, 181, 182, 183, 186];
+const LULC_WETLAND_TYPES = [181, 182, 183, 186];
+const LULC_CROPLAND_KEYWORDS = ['rainfed', 'cropland', 'sparse vegetation', 'sparse', 'vegetation'];
+
+function getGroupColorForType(typeId, typeName) {
+  const typeIdNum = Number(typeId);
+  const typeNameLower = (typeName || '').toLowerCase();
+
+  if (LULC_FOREST_TYPES.includes(typeIdNum)) {
+    return '#4c7300'; // Forest green
+  } else if (LULC_CROPLAND_KEYWORDS.some(keyword => typeNameLower.includes(keyword))) {
+    return '#ff9800'; // Cropland orange
+  } else {
+    return '#ffc107'; // Others yellow
+  }
+}
+
+function getCategoryForType(typeId, typeName) {
+  const typeIdNum = Number(typeId);
+  const typeNameLower = (typeName || '').toLowerCase();
+
+  if (LULC_FOREST_TYPES.includes(typeIdNum)) {
+    return 'forest';
+  }
+  if (LULC_CROPLAND_KEYWORDS.some(keyword => typeNameLower.includes(keyword))) {
+    return 'cropland';
+  }
+  return 'others';
+}
+
 function getColor(code) {
   // Handle undefined or null codes
   if (code === undefined || code === null || isNaN(code)) {
@@ -270,6 +301,7 @@ let legend = null;           // Dynamic legend control
 let animationLegend = null;  // Legend for animation layer
 let currentLayer = null;     // Current district-filtered LULC layer
 let loadedLulcLayers = [];   // Array to track all loaded LULC layers
+let legendCategoryFilter = new Set(); // Active legend category filters
 let drawnItems = new L.FeatureGroup(); // Holds user-drawn shapes
 map.addLayer(drawnItems);
 
@@ -283,6 +315,7 @@ let isPlaying = false;
 let currentAnimationYear = null;
 let animationDistrict = null;
 let animationDataCache = {}; // Structure: { district_year: { features: [...], ... } }
+const REQUIRED_ANIMATION_YEARS = [2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022];
 
 // Helper function to get formatted timestamp
 function getTimestamp() {
@@ -388,7 +421,7 @@ map.on(L.Draw.Event.CREATED, async (e) => {
     const getGroupColorPolygon = (typeId, typeName) => {
       const typeIdNum = Number(typeId);
       const typeNameLower = (typeName || '').toLowerCase();
-      const croplandKeywords = ['rainfed', 'cropland', 'sparse vegetation', 'sparse', 'vegetation'];
+      const croplandKeywords = LULC_CROPLAND_KEYWORDS;
       
       if (forestTypesPolygon.includes(typeIdNum)) {
         return '#4c7300'; // Forest green
@@ -498,6 +531,7 @@ async function loadLULC() {
     }
   });
   loadedLulcLayers = []; // Clear the tracking array
+  legendCategoryFilter.clear();
 
   submitBtn.textContent = "Loading...";
   submitBtn.disabled = true;
@@ -549,25 +583,8 @@ async function loadLULC() {
     console.log(`⏱️ Data fetch: ${(timings.dataFetch / 1000).toFixed(2)}s`);
 
     // Define LULC type groups
-    const forestTypes = [
-      51, 52, 61, 62, 71, 72, 81, 82, 91, 92, 181, 182, 183, 186,
-    ];
-    const wetlandTypes = [181, 182, 183, 186];
-
-    // Helper function to get group color based on type (matches legend colors)
-    const getGroupColor = (typeId, typeName, typeMapping) => {
-      const typeIdNum = Number(typeId);
-      const typeNameLower = (typeName || (typeMapping && typeMapping[typeIdNum]) || '').toLowerCase();
-      const croplandKeywords = ['rainfed', 'cropland', 'sparse vegetation', 'sparse', 'vegetation'];
-      
-      if (forestTypes.includes(typeIdNum)) {
-        return '#4c7300'; // Forest green
-      } else if (croplandKeywords.some(keyword => typeNameLower.includes(keyword))) {
-        return '#ff9800'; // Cropland orange
-      } else {
-        return '#ffc107'; // Others yellow
-      }
-    };
+    const forestTypes = LULC_FOREST_TYPES;
+    const wetlandTypes = LULC_WETLAND_TYPES;
 
     // Filter LULC features (optimized with Set for faster lookups)
     const forestTypesSet = new Set(forestTypes);
@@ -663,7 +680,7 @@ async function loadLULC() {
         styleCache.set(key, {
           color: "#333",
           weight: forestTypes.includes(typeId) ? 0.5 : 0,
-          fillColor: getGroupColor(typeId, typeName, typeMapping),
+          fillColor: getGroupColorForType(typeId, typeName),
           fillOpacity: 0.6,
         });
       }
@@ -703,6 +720,9 @@ async function loadLULC() {
     
     // Add to tracking array
     loadedLulcLayers.push(currentLayer);
+    if (legendCategoryFilter.size > 0) {
+      applyLegendCategoryFilter();
+    }
 
     // Defer expensive operations
     requestAnimationFrame(() => {
@@ -733,7 +753,7 @@ async function loadLULC() {
     const othersGroup = {};
     
     // Keywords to identify cropland types
-    const croplandKeywords = ['rainfed', 'cropland', 'sparse vegetation', 'sparse', 'vegetation'];
+    const croplandKeywords = LULC_CROPLAND_KEYWORDS;
     
     for (const [code, label] of Object.entries(uniqueTypes)) {
       const codeNum = Number(code);
@@ -767,10 +787,12 @@ async function loadLULC() {
       // Forest group with dropdown
       if (Object.keys(forestGroup).length > 0) {
         html += `<div class="legend-group">
-          <div class="legend-group-header" onclick="toggleLegendGroup(this)">
-            <span class="legend-arrow">▼</span>
-            <span class="legend-color-box" style="background-color: #4c7300; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
-            <strong style="color: #4c7300;">Forest</strong>
+          <div class="legend-group-header" data-category="forest">
+            <span class="legend-arrow" onclick="toggleLegendGroup(this.parentElement); event.stopPropagation();">▼</span>
+            <span class="legend-category-toggle" onclick="setLegendCategoryFilter('forest'); event.stopPropagation();">
+              <span class="legend-color-box" style="background-color: #4c7300; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
+              <strong style="color: #4c7300;">Forest</strong>
+            </span>
           </div>
           <div class="legend-group-content" style="display: block;">
         `;
@@ -785,10 +807,12 @@ async function loadLULC() {
       // Cropland group with dropdown
       if (Object.keys(croplandGroup).length > 0) {
         html += `<div class="legend-group">
-          <div class="legend-group-header" onclick="toggleLegendGroup(this)">
-            <span class="legend-arrow">▼</span>
-            <span class="legend-color-box" style="background-color: #ff9800; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
-            <strong style="color: #ff9800;">Cropland</strong>
+          <div class="legend-group-header" data-category="cropland">
+            <span class="legend-arrow" onclick="toggleLegendGroup(this.parentElement); event.stopPropagation();">▼</span>
+            <span class="legend-category-toggle" onclick="setLegendCategoryFilter('cropland'); event.stopPropagation();">
+              <span class="legend-color-box" style="background-color: #ff9800; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
+              <strong style="color: #ff9800;">Cropland</strong>
+            </span>
           </div>
           <div class="legend-group-content" style="display: block;">
         `;
@@ -803,10 +827,12 @@ async function loadLULC() {
       // Others group with dropdown
       if (Object.keys(othersGroup).length > 0) {
         html += `<div class="legend-group">
-          <div class="legend-group-header" onclick="toggleLegendGroup(this)">
-            <span class="legend-arrow">▼</span>
-            <span class="legend-color-box" style="background-color: #ffc107; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
-            <strong style="color: #ffc107;">Others</strong>
+          <div class="legend-group-header" data-category="others">
+            <span class="legend-arrow" onclick="toggleLegendGroup(this.parentElement); event.stopPropagation();">▼</span>
+            <span class="legend-category-toggle" onclick="setLegendCategoryFilter('others'); event.stopPropagation();">
+              <span class="legend-color-box" style="background-color: #ffc107; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
+              <strong style="color: #ffc107;">Others</strong>
+            </span>
           </div>
           <div class="legend-group-content" style="display: block;">
         `;
@@ -825,6 +851,7 @@ async function loadLULC() {
       return div;
     };
     legend.addTo(map);
+    updateLegendSelectionUI();
     
     // Calculate and display loading time
     const loadEndTime = performance.now();
@@ -918,6 +945,7 @@ function clearLULC() {
     map.removeControl(legend);
     legend = null;
   }
+  legendCategoryFilter.clear();
 
   // Clear district charts
   if (districtForestChartInstance) {
@@ -2071,8 +2099,87 @@ function toggleLegendGroup(header) {
   }
 }
 
+function updateLegendSelectionUI() {
+  const headers = document.querySelectorAll('.legend-group-header[data-category]');
+  headers.forEach(header => {
+    const category = header.getAttribute('data-category');
+    if (legendCategoryFilter.has(category)) {
+      header.classList.add('active');
+    } else {
+      header.classList.remove('active');
+    }
+  });
+}
+
+function applyLegendCategoryFilter() {
+  const layers = new Set();
+  if (currentLayer) layers.add(currentLayer);
+  if (map._animationLayer) layers.add(map._animationLayer);
+  loadedLulcLayers.forEach(layer => {
+    if (layer) layers.add(layer);
+  });
+
+  layers.forEach(layer => {
+    if (!layer || typeof layer.setStyle !== 'function') return;
+    layer.setStyle(feature => {
+      const typeId = Number(feature.properties.type_id);
+      const typeName = feature.properties.type_name || typeMappingCache[typeId] || "Unknown";
+      const category = getCategoryForType(typeId, typeName);
+      const isActive = legendCategoryFilter.size === 0 || legendCategoryFilter.has(category);
+
+      return {
+        color: "#333",
+        weight: LULC_FOREST_TYPES.includes(typeId) ? 0.5 : 0,
+        fillColor: getGroupColorForType(typeId, typeName),
+        fillOpacity: isActive ? 0.6 : 0.1,
+        opacity: isActive ? 1 : 0.3,
+      };
+    });
+  });
+}
+
+function setLegendCategoryFilter(category) {
+  if (legendCategoryFilter.has(category)) {
+    legendCategoryFilter.delete(category);
+  } else {
+    legendCategoryFilter.add(category);
+  }
+  applyLegendCategoryFilter();
+  updateLegendSelectionUI();
+}
+
 // Make toggleLegendGroup available globally
 window.toggleLegendGroup = toggleLegendGroup;
+window.setLegendCategoryFilter = setLegendCategoryFilter;
+
+function hasRequiredAnimationYears(years) {
+  const yearSet = new Set((years || []).map((y) => Number(y)));
+  return REQUIRED_ANIMATION_YEARS.every((year) => yearSet.has(year));
+}
+
+function setAnimationAvailability(years) {
+  const select = document.getElementById('animationDistrictSelect');
+  const playBtn = document.getElementById('playBtn');
+  const slider = document.getElementById('animationSlider');
+  const status = document.getElementById('animationStatus');
+  if (!select || !playBtn || !slider || !status) return false;
+
+  const isAvailable = hasRequiredAnimationYears(years);
+
+  select.disabled = !isAvailable;
+  slider.disabled = !isAvailable;
+  playBtn.disabled = !isAvailable;
+
+  if (!isAvailable) {
+    select.value = '';
+    select.innerHTML = '<option value="">Animation requires data for 2015-2022</option>';
+    status.textContent = 'Animation requires data for 2015-2022';
+  } else {
+    status.textContent = 'Select a district to start animation';
+  }
+
+  return isAvailable;
+}
 
 // ============================================
 // District-wise Animation Functions
@@ -2314,20 +2421,7 @@ async function renderAnimationLayer(features, year, district) {
   }
   
   // Define colors (same as main LULC function)
-  const forestTypes = [51, 52, 61, 62, 71, 72, 81, 82, 91, 92, 181, 182, 183, 186];
-  const getGroupColor = (typeId, typeName) => {
-    const typeIdNum = Number(typeId);
-    const typeNameLower = (typeName || '').toLowerCase();
-    const croplandKeywords = ['rainfed', 'cropland', 'sparse vegetation', 'sparse', 'vegetation'];
-    
-    if (forestTypes.includes(typeIdNum)) {
-      return '#4c7300'; // Forest green
-    } else if (croplandKeywords.some(keyword => typeNameLower.includes(keyword))) {
-      return '#ff9800'; // Cropland orange
-    } else {
-      return '#ffc107'; // Others yellow
-    }
-  };
+  const forestTypes = LULC_FOREST_TYPES;
   
   // Simplify geometries for performance
   const simplifiedFeatures = features.map(f => simplifyGeometry(f, 0.0003));
@@ -2342,7 +2436,7 @@ async function renderAnimationLayer(features, year, district) {
         return {
           color: "#333",
           weight: forestTypes.includes(typeId) ? 0.5 : 0,
-          fillColor: getGroupColor(typeId, typeName),
+          fillColor: getGroupColorForType(typeId, typeName),
           fillOpacity: 0.6,
         };
       },
@@ -2365,6 +2459,9 @@ async function renderAnimationLayer(features, year, district) {
   // Add to map and store reference
   animationLayer.addTo(map);
   map._animationLayer = animationLayer;
+  if (legendCategoryFilter.size > 0) {
+    applyLegendCategoryFilter();
+  }
   
   // Fit bounds to the district
   if (features.length > 0) {
@@ -2385,7 +2482,7 @@ function createAnimationLegend(features, typeMapping, year, district) {
   // Build unique types from features
   const uniqueTypes = {};
   const skipTypes = new Set([71, 72, 81, 82]);
-  const forestTypes = [51, 52, 61, 62, 71, 72, 81, 82, 91, 92, 181, 182, 183, 186];
+  const forestTypes = LULC_FOREST_TYPES;
   
   for (let i = 0; i < features.length; i++) {
     const t = Number(features[i].properties.type_id);
@@ -2398,7 +2495,7 @@ function createAnimationLegend(features, typeMapping, year, district) {
   const croplandGroup = {};
   const othersGroup = {};
   
-  const croplandKeywords = ['rainfed', 'cropland', 'sparse vegetation', 'sparse', 'vegetation'];
+  const croplandKeywords = LULC_CROPLAND_KEYWORDS;
   
   for (const [code, label] of Object.entries(uniqueTypes)) {
     const codeNum = Number(code);
@@ -2424,10 +2521,12 @@ function createAnimationLegend(features, typeMapping, year, district) {
     // Forest group
     if (Object.keys(forestGroup).length > 0) {
       html += `<div class="legend-group">
-        <div class="legend-group-header" onclick="toggleLegendGroup(this)">
-          <span class="legend-arrow">▼</span>
-          <span class="legend-color-box" style="background-color: #4c7300; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
-          <strong style="color: #4c7300;">Forest</strong>
+        <div class="legend-group-header" data-category="forest">
+          <span class="legend-arrow" onclick="toggleLegendGroup(this.parentElement); event.stopPropagation();">▼</span>
+          <span class="legend-category-toggle" onclick="setLegendCategoryFilter('forest'); event.stopPropagation();">
+            <span class="legend-color-box" style="background-color: #4c7300; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
+            <strong style="color: #4c7300;">Forest</strong>
+          </span>
         </div>
         <div class="legend-group-content" style="display: block;">
       `;
@@ -2442,10 +2541,12 @@ function createAnimationLegend(features, typeMapping, year, district) {
     // Cropland group
     if (Object.keys(croplandGroup).length > 0) {
       html += `<div class="legend-group">
-        <div class="legend-group-header" onclick="toggleLegendGroup(this)">
-          <span class="legend-arrow">▼</span>
-          <span class="legend-color-box" style="background-color: #ff9800; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
-          <strong style="color: #ff9800;">Cropland</strong>
+        <div class="legend-group-header" data-category="cropland">
+          <span class="legend-arrow" onclick="toggleLegendGroup(this.parentElement); event.stopPropagation();">▼</span>
+          <span class="legend-category-toggle" onclick="setLegendCategoryFilter('cropland'); event.stopPropagation();">
+            <span class="legend-color-box" style="background-color: #ff9800; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
+            <strong style="color: #ff9800;">Cropland</strong>
+          </span>
         </div>
         <div class="legend-group-content" style="display: block;">
       `;
@@ -2460,10 +2561,12 @@ function createAnimationLegend(features, typeMapping, year, district) {
     // Others group
     if (Object.keys(othersGroup).length > 0) {
       html += `<div class="legend-group">
-        <div class="legend-group-header" onclick="toggleLegendGroup(this)">
-          <span class="legend-arrow">▼</span>
-          <span class="legend-color-box" style="background-color: #ffc107; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
-          <strong style="color: #ffc107;">Others</strong>
+        <div class="legend-group-header" data-category="others">
+          <span class="legend-arrow" onclick="toggleLegendGroup(this.parentElement); event.stopPropagation();">▼</span>
+          <span class="legend-category-toggle" onclick="setLegendCategoryFilter('others'); event.stopPropagation();">
+            <span class="legend-color-box" style="background-color: #ffc107; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
+            <strong style="color: #ffc107;">Others</strong>
+          </span>
         </div>
         <div class="legend-group-content" style="display: block;">
       `;
@@ -2482,6 +2585,7 @@ function createAnimationLegend(features, typeMapping, year, district) {
     return div;
   };
   animationLegend.addTo(map);
+  updateLegendSelectionUI();
 }
 
 // Helper function to simplify geometries using turf.js
@@ -2532,11 +2636,14 @@ window.onload = () => {
         yearSlider.value = String(maxYear);
         yearDisplay.textContent = String(maxYear);
         
-        // Initialize animation controls after districts are populated
-        setTimeout(() => {
-          populateAnimationDistrictSelect();
-          updateAnimationSlider();
-        }, 100);
+        // Initialize animation controls only if required years exist
+        const animationReady = setAnimationAvailability(years);
+        if (animationReady) {
+          setTimeout(() => {
+            populateAnimationDistrictSelect();
+            updateAnimationSlider();
+          }, 100);
+        }
       }
     })
     .catch((err) => console.error("Failed to load years:", err));

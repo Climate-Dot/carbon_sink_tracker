@@ -74,6 +74,11 @@ def generate_geojson_for_district_year(conn, district_id, district_name, year, o
     Generate GeoJSON file for a specific district and year.
     Uses Reduce() in SQL to simplify geometries before fetching.
     """
+    output_file = output_path / str(year) / f"district_{district_id}.geojson"
+    if output_file.exists():
+        print(f"  {district_name} ({year}): skipped (file already exists)")
+        return 0, 0
+
     cursor = conn.cursor()
     
     # Query with geometry simplification in SQL
@@ -136,7 +141,6 @@ def generate_geojson_for_district_year(conn, district_id, district_name, year, o
     }
     
     # Write to file
-    output_file = output_path / str(year) / f"district_{district_id}.geojson"
     with open(output_file, 'w') as f:
         json.dump(geojson, f, separators=(',', ':'))  # Compact JSON
     

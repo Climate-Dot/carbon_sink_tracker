@@ -186,7 +186,7 @@ button {
 
 .legend-groups-container {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     gap: 15px;
     margin-top: 10px;
 }
@@ -197,13 +197,25 @@ button {
 }
 
 .legend-group-header {
-    cursor: pointer;
+    cursor: default;
     user-select: none;
     display: flex;
     align-items: center;
     gap: 6px;
     padding: 4px 0;
     transition: color 0.2s ease;
+}
+
+.legend-group-header.active {
+    background: rgba(47, 85, 119, 0.08);
+    border-radius: 6px;
+    padding: 4px 6px;
+}
+
+.legend-category-toggle {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
 }
 
 .legend-group-header:hover {
@@ -216,6 +228,7 @@ button {
     transition: transform 0.2s ease;
     display: inline-block;
     width: 12px;
+    cursor: pointer;
 }
 
 .legend-group-content {
@@ -342,6 +355,7 @@ button:focus-visible {
 .download-btn:hover:not(:disabled) {
     background-color: #f4f9f9;
     border-color: #357372;
+    color: #357372;
     transform: translateY(-1px);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
@@ -349,6 +363,7 @@ button:focus-visible {
 .download-btn:active:not(:disabled) {
     background-color: #e6f1f1;
     border-color: #285a59;
+    color: #285a59;
     transform: translateY(0);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
