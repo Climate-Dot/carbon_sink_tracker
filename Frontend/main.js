@@ -154,28 +154,77 @@ function buildLegendGroups(uniqueTypes) {
   return { forest, wetlands, cropland, habitation, other };
 }
 
-function getGroupColorForType(typeId, typeName) {
-  const typeIdNum = Number(typeId);
-  const typeNameLower = (typeName || '').toLowerCase();
+const LEGEND_CATEGORY_TYPE_IDS = {
+  forest: LEGEND_FOREST_ORDER,
+  wetlands: LEGEND_WETLAND_ORDER,
+  cropland: LEGEND_CROPLAND_ORDER,
+  habitation: LEGEND_HABITATION_ORDER,
+  others: LEGEND_OTHER_ORDER
+};
 
+function hexToRgb(hex) {
+  const normalized = hex.replace('#', '');
+  const bigint = parseInt(normalized, 16);
+  return {
+    r: (bigint >> 16) & 255,
+    g: (bigint >> 8) & 255,
+    b: bigint & 255
+  };
+}
+
+function rgbToHex(r, g, b) {
+  const toHex = (value) => value.toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function mixColors(hexA, hexB, weight) {
+  const a = hexToRgb(hexA);
+  const b = hexToRgb(hexB);
+  const w = Math.min(1, Math.max(0, weight));
+  const r = Math.round(a.r + (b.r - a.r) * w);
+  const g = Math.round(a.g + (b.g - a.g) * w);
+  const bCh = Math.round(a.b + (b.b - a.b) * w);
+  return rgbToHex(r, g, bCh);
+}
+
+function getGradientColor(baseHex, index, total) {
+  if (total <= 1) return baseHex;
+  const dark = mixColors(baseHex, '#000000', 0.2);
+  const light = mixColors(baseHex, '#ffffff', 0.45);
+  const t = index / (total - 1);
+  return mixColors(dark, light, t);
+}
+
+function getGradientColorForType(typeId, order, baseHex) {
+  const idx = order.indexOf(typeId);
+  if (idx === -1) return baseHex;
+  return getGradientColor(baseHex, idx, order.length);
+}
+
+function getSubcategoryColorForType(typeId) {
+  const typeIdNum = Number(typeId);
+  if (!Number.isFinite(typeIdNum)) return '#6a1b9a';
   if (LULC_HABITATION_TYPES.includes(typeIdNum)) {
-    return '#c31400'; // Habitation red
+    return getGradientColorForType(typeIdNum, LEGEND_HABITATION_ORDER, '#c31400');
   }
   if (LULC_WETLAND_TYPES.includes(typeIdNum) || LULC_WATER_TYPES.includes(typeIdNum)) {
-    return '#0046c8'; // Water blue
+    return getGradientColorForType(typeIdNum, LEGEND_WETLAND_ORDER, '#0046c8');
   }
   if (LULC_FOREST_TYPES.includes(typeIdNum)) {
-    return '#4c7300'; // Forest green
-  } else if (LULC_CROPLAND_TYPES.includes(typeIdNum)) {
-    return '#f2c94c'; // Cropland yellow
-  } else {
-    return '#6a1b9a'; // Other purple
+    return getGradientColorForType(typeIdNum, LEGEND_FOREST_ORDER, '#4c7300');
   }
+  if (LULC_CROPLAND_TYPES.includes(typeIdNum)) {
+    return getGradientColorForType(typeIdNum, LEGEND_CROPLAND_ORDER, '#f2c94c');
+  }
+  return getGradientColorForType(typeIdNum, LEGEND_OTHER_ORDER, '#6a1b9a');
+}
+
+function getGroupColorForType(typeId, typeName) {
+  return getSubcategoryColorForType(typeId);
 }
 
 function getCategoryForType(typeId, typeName) {
   const typeIdNum = Number(typeId);
-  const typeNameLower = (typeName || '').toLowerCase();
 
   if (LULC_HABITATION_TYPES.includes(typeIdNum)) {
     return 'habitation';
@@ -389,7 +438,7 @@ let legend = null;           // Dynamic legend control
 let animationLegend = null;  // Legend for animation layer
 let currentLayer = null;     // Current district-filtered LULC layer
 let loadedLulcLayers = [];   // Array to track all loaded LULC layers
-let legendCategoryFilter = new Set(); // Active legend category filters
+let legendTypeFilter = new Set(); // Active legend subcategory filters
 let drawnItems = new L.FeatureGroup(); // Holds user-drawn shapes
 map.addLayer(drawnItems);
 
@@ -624,7 +673,7 @@ async function loadLULC() {
     }
   });
   loadedLulcLayers = []; // Clear the tracking array
-  legendCategoryFilter.clear();
+  legendTypeFilter.clear();
 
   submitBtn.textContent = "Loading...";
   submitBtn.disabled = true;
@@ -813,7 +862,7 @@ async function loadLULC() {
     
     // Add to tracking array
     loadedLulcLayers.push(currentLayer);
-    if (legendCategoryFilter.size > 0) {
+    if (legendTypeFilter.size > 0) {
       applyLegendCategoryFilter();
     }
 
@@ -865,17 +914,23 @@ async function loadLULC() {
       // Forest Land group with dropdown
       if (forestGroup.length > 0) {
         html += `<div class="legend-group">
-          <div class="legend-group-header" data-category="forest">
+          <div class="legend-group-header" data-category="forest" onclick="setLegendCategoryFilter('forest');">
             <span class="legend-arrow" onclick="toggleLegendGroup(this.parentElement); event.stopPropagation();">▼</span>
-            <span class="legend-category-toggle" onclick="setLegendCategoryFilter('forest'); event.stopPropagation();">
-              <span class="legend-color-box" style="background-color: #4c7300; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
+            <span class="legend-category-toggle">
+            <span class="legend-color-box" style="background-color: #4c7300;"></span>
               <strong style="color: #4c7300;">Forest Land</strong>
             </span>
           </div>
           <div class="legend-group-content" style="display: block;">
         `;
         for (const entry of forestGroup) {
-          html += `<div style="margin-left: 15px; margin-bottom: 4px;">
+          const entryId = Number(entry.id);
+          const hasId = Number.isFinite(entryId);
+          const entryColor = getSubcategoryColorForType(entryId);
+          const dataAttr = hasId ? `data-type-id="${entryId}"` : `data-type-id=""`;
+          const clickAttr = hasId ? `onclick="toggleLegendTypeFilter(${entryId}); event.stopPropagation();"` : '';
+          html += `<div class="legend-subcategory" ${dataAttr} ${clickAttr}>
+            <span class="legend-color-box" style="background-color: ${entryColor};"></span>
             ${entry.label}
           </div>`;
         }
@@ -885,17 +940,23 @@ async function loadLULC() {
       // Wetlands group with dropdown
       if (wetlandGroup.length > 0) {
         html += `<div class="legend-group">
-          <div class="legend-group-header" data-category="wetlands">
+          <div class="legend-group-header" data-category="wetlands" onclick="setLegendCategoryFilter('wetlands');">
             <span class="legend-arrow" onclick="toggleLegendGroup(this.parentElement); event.stopPropagation();">▼</span>
-            <span class="legend-category-toggle" onclick="setLegendCategoryFilter('wetlands'); event.stopPropagation();">
-              <span class="legend-color-box" style="background-color: #0046c8; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
+            <span class="legend-category-toggle">
+              <span class="legend-color-box" style="background-color: #0046c8;"></span>
               <strong style="color: #0046c8;">Wetlands</strong>
             </span>
           </div>
           <div class="legend-group-content" style="display: block;">
         `;
         for (const entry of wetlandGroup) {
-          html += `<div style="margin-left: 15px; margin-bottom: 4px;">
+          const entryId = Number(entry.id);
+          const hasId = Number.isFinite(entryId);
+          const entryColor = getSubcategoryColorForType(entryId);
+          const dataAttr = hasId ? `data-type-id="${entryId}"` : `data-type-id=""`;
+          const clickAttr = hasId ? `onclick="toggleLegendTypeFilter(${entryId}); event.stopPropagation();"` : '';
+          html += `<div class="legend-subcategory" ${dataAttr} ${clickAttr}>
+            <span class="legend-color-box" style="background-color: ${entryColor};"></span>
             ${entry.label}
           </div>`;
         }
@@ -905,17 +966,23 @@ async function loadLULC() {
       // Cropland group with dropdown
       if (croplandGroup.length > 0) {
         html += `<div class="legend-group">
-          <div class="legend-group-header" data-category="cropland">
+          <div class="legend-group-header" data-category="cropland" onclick="setLegendCategoryFilter('cropland');">
             <span class="legend-arrow" onclick="toggleLegendGroup(this.parentElement); event.stopPropagation();">▼</span>
-            <span class="legend-category-toggle" onclick="setLegendCategoryFilter('cropland'); event.stopPropagation();">
-              <span class="legend-color-box" style="background-color: #f2c94c; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
+            <span class="legend-category-toggle">
+              <span class="legend-color-box" style="background-color: #f2c94c;"></span>
               <strong style="color: #b38f00;">Cropland</strong>
             </span>
           </div>
           <div class="legend-group-content" style="display: block;">
         `;
         for (const entry of croplandGroup) {
-          html += `<div style="margin-left: 15px; margin-bottom: 4px;">
+          const entryId = Number(entry.id);
+          const hasId = Number.isFinite(entryId);
+          const entryColor = getSubcategoryColorForType(entryId);
+          const dataAttr = hasId ? `data-type-id="${entryId}"` : `data-type-id=""`;
+          const clickAttr = hasId ? `onclick="toggleLegendTypeFilter(${entryId}); event.stopPropagation();"` : '';
+          html += `<div class="legend-subcategory" ${dataAttr} ${clickAttr}>
+            <span class="legend-color-box" style="background-color: ${entryColor};"></span>
             ${entry.label}
           </div>`;
         }
@@ -925,17 +992,23 @@ async function loadLULC() {
       // Habitation group with dropdown
       if (habitationGroup.length > 0) {
         html += `<div class="legend-group">
-          <div class="legend-group-header" data-category="habitation">
+          <div class="legend-group-header" data-category="habitation" onclick="setLegendCategoryFilter('habitation');">
             <span class="legend-arrow" onclick="toggleLegendGroup(this.parentElement); event.stopPropagation();">▼</span>
-            <span class="legend-category-toggle" onclick="setLegendCategoryFilter('habitation'); event.stopPropagation();">
-              <span class="legend-color-box" style="background-color: #c31400; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
+            <span class="legend-category-toggle">
+              <span class="legend-color-box" style="background-color: #c31400;"></span>
               <strong style="color: #c31400;">Habitation</strong>
             </span>
           </div>
           <div class="legend-group-content" style="display: block;">
         `;
         for (const entry of habitationGroup) {
-          html += `<div style="margin-left: 15px; margin-bottom: 4px;">
+          const entryId = Number(entry.id);
+          const hasId = Number.isFinite(entryId);
+          const entryColor = getSubcategoryColorForType(entryId);
+          const dataAttr = hasId ? `data-type-id="${entryId}"` : `data-type-id=""`;
+          const clickAttr = hasId ? `onclick="toggleLegendTypeFilter(${entryId}); event.stopPropagation();"` : '';
+          html += `<div class="legend-subcategory" ${dataAttr} ${clickAttr}>
+            <span class="legend-color-box" style="background-color: ${entryColor};"></span>
             ${entry.label}
           </div>`;
         }
@@ -945,17 +1018,23 @@ async function loadLULC() {
       // Other group with dropdown
       if (othersGroup.length > 0) {
         html += `<div class="legend-group">
-          <div class="legend-group-header" data-category="others">
+          <div class="legend-group-header" data-category="others" onclick="setLegendCategoryFilter('others');">
             <span class="legend-arrow" onclick="toggleLegendGroup(this.parentElement); event.stopPropagation();">▼</span>
-            <span class="legend-category-toggle" onclick="setLegendCategoryFilter('others'); event.stopPropagation();">
-              <span class="legend-color-box" style="background-color: #6a1b9a; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
+            <span class="legend-category-toggle">
+              <span class="legend-color-box" style="background-color: #6a1b9a;"></span>
               <strong style="color: #6a1b9a;">Other</strong>
             </span>
           </div>
           <div class="legend-group-content" style="display: block;">
         `;
         for (const entry of othersGroup) {
-          html += `<div style="margin-left: 15px; margin-bottom: 4px;">
+          const entryId = Number(entry.id);
+          const hasId = Number.isFinite(entryId);
+          const entryColor = getSubcategoryColorForType(entryId);
+          const dataAttr = hasId ? `data-type-id="${entryId}"` : `data-type-id=""`;
+          const clickAttr = hasId ? `onclick="toggleLegendTypeFilter(${entryId}); event.stopPropagation();"` : '';
+          html += `<div class="legend-subcategory" ${dataAttr} ${clickAttr}>
+            <span class="legend-color-box" style="background-color: ${entryColor};"></span>
             ${entry.label}
           </div>`;
         }
@@ -1063,7 +1142,7 @@ function clearLULC() {
     map.removeControl(legend);
     legend = null;
   }
-  legendCategoryFilter.clear();
+  legendTypeFilter.clear();
 
   // Clear animation layer and legend
   if (map._animationLayer && map.hasLayer(map._animationLayer)) {
@@ -2258,11 +2337,17 @@ function updateLegendSelectionUI() {
   const headers = document.querySelectorAll('.legend-group-header[data-category]');
   headers.forEach(header => {
     const category = header.getAttribute('data-category');
-    if (legendCategoryFilter.has(category)) {
-      header.classList.add('active');
-    } else {
-      header.classList.remove('active');
-    }
+    const typeIds = LEGEND_CATEGORY_TYPE_IDS[category] || [];
+    const isActive = legendTypeFilter.size > 0 && typeIds.some((id) => legendTypeFilter.has(id));
+    header.classList.toggle('active', isActive);
+  });
+
+  const subcategories = document.querySelectorAll('.legend-subcategory[data-type-id]');
+  subcategories.forEach(item => {
+    const rawId = item.getAttribute('data-type-id');
+    const typeId = Number(rawId);
+    const isActive = Number.isFinite(typeId) && legendTypeFilter.has(typeId);
+    item.classList.toggle('active', isActive);
   });
 }
 
@@ -2279,8 +2364,7 @@ function applyLegendCategoryFilter() {
     layer.setStyle(feature => {
       const typeId = Number(feature.properties.type_id);
       const typeName = feature.properties.type_name || typeMappingCache[typeId] || "Unknown";
-      const category = getCategoryForType(typeId, typeName);
-      const isActive = legendCategoryFilter.size === 0 || legendCategoryFilter.has(category);
+      const isActive = legendTypeFilter.size === 0 || legendTypeFilter.has(typeId);
 
       return {
         color: "#333",
@@ -2294,10 +2378,25 @@ function applyLegendCategoryFilter() {
 }
 
 function setLegendCategoryFilter(category) {
-  if (legendCategoryFilter.has(category)) {
-    legendCategoryFilter.delete(category);
+  const typeIds = LEGEND_CATEGORY_TYPE_IDS[category] || [];
+  if (typeIds.length === 0) return;
+  const allSelected = typeIds.every((id) => legendTypeFilter.has(id));
+  if (allSelected) {
+    typeIds.forEach((id) => legendTypeFilter.delete(id));
   } else {
-    legendCategoryFilter.add(category);
+    typeIds.forEach((id) => legendTypeFilter.add(id));
+  }
+  applyLegendCategoryFilter();
+  updateLegendSelectionUI();
+}
+
+function toggleLegendTypeFilter(typeId) {
+  const idNum = Number(typeId);
+  if (!Number.isFinite(idNum)) return;
+  if (legendTypeFilter.has(idNum)) {
+    legendTypeFilter.delete(idNum);
+  } else {
+    legendTypeFilter.add(idNum);
   }
   applyLegendCategoryFilter();
   updateLegendSelectionUI();
@@ -2306,6 +2405,7 @@ function setLegendCategoryFilter(category) {
 // Make toggleLegendGroup available globally
 window.toggleLegendGroup = toggleLegendGroup;
 window.setLegendCategoryFilter = setLegendCategoryFilter;
+window.toggleLegendTypeFilter = toggleLegendTypeFilter;
 
 function hasRequiredAnimationYears(years) {
   const yearSet = new Set((years || []).map((y) => Number(y)));
@@ -2346,7 +2446,7 @@ async function populateAnimationDistrictSelect() {
   if (!select) return;
   
   select.innerHTML = '<option value="">-- Select a district --</option>';
-
+  
   const allOption = document.createElement('option');
   allOption.value = ALL_GUJARAT_VALUE;
   allOption.textContent = 'All Gujarat';
@@ -2366,12 +2466,12 @@ async function populateAnimationDistrictSelect() {
   } catch (err) {
     // Fallback to any existing district checkboxes if API fails
     const districtCheckboxes = document.querySelectorAll('#district-checkboxes input[type="checkbox"]');
-    districtCheckboxes.forEach(checkbox => {
-      const option = document.createElement('option');
-      option.value = checkbox.value;
-      option.textContent = checkbox.value;
-      select.appendChild(option);
-    });
+  districtCheckboxes.forEach(checkbox => {
+    const option = document.createElement('option');
+    option.value = checkbox.value;
+    option.textContent = checkbox.value;
+    select.appendChild(option);
+  });
   }
   
   // Add change handler
@@ -2517,7 +2617,7 @@ async function loadDistrictAnimationData(district, year, renderLayer = true) {
       fetch('http://127.0.0.1:7242/ingest/fa490426-47b1-4baf-90b8-2b666b026c4a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.js:2320',message:'animation cache hit',data:{cacheKey,features:(cachedData.features||[]).length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
       // #endregion
       if (renderLayer) {
-        await renderAnimationLayer(cachedData.features, year, district);
+      await renderAnimationLayer(cachedData.features, year, district);
       }
       return;
     }
@@ -2549,10 +2649,10 @@ async function loadDistrictAnimationData(district, year, renderLayer = true) {
         .map((f) => f.properties.id)
         .filter((id) => id !== undefined && id !== null);
     } else {
-      const districtId = districtNameToId[district.toUpperCase()];
-      if (!districtId) {
-        console.error(`District ID not found for: ${district}`);
-        return;
+    const districtId = districtNameToId[district.toUpperCase()];
+    if (!districtId) {
+      console.error(`District ID not found for: ${district}`);
+      return;
       }
       districtIds = [districtId];
     }
@@ -2684,7 +2784,7 @@ async function renderAnimationLayer(features, year, district) {
   // Add to map and store reference
   animationLayer.addTo(map);
   map._animationLayer = animationLayer;
-  if (legendCategoryFilter.size > 0) {
+  if (legendTypeFilter.size > 0) {
     applyLegendCategoryFilter();
   }
   
@@ -2742,17 +2842,23 @@ function createAnimationLegend(features, typeMapping, year, district) {
     // Forest Land group
     if (forestGroup.length > 0) {
       html += `<div class="legend-group">
-        <div class="legend-group-header" data-category="forest">
+        <div class="legend-group-header" data-category="forest" onclick="setLegendCategoryFilter('forest');">
           <span class="legend-arrow" onclick="toggleLegendGroup(this.parentElement); event.stopPropagation();">▼</span>
-          <span class="legend-category-toggle" onclick="setLegendCategoryFilter('forest'); event.stopPropagation();">
-            <span class="legend-color-box" style="background-color: #4c7300; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
+          <span class="legend-category-toggle">
+          <span class="legend-color-box" style="background-color: #4c7300;"></span>
             <strong style="color: #4c7300;">Forest Land</strong>
           </span>
         </div>
         <div class="legend-group-content" style="display: block;">
       `;
       for (const entry of forestGroup) {
-        html += `<div style="margin-left: 15px; margin-bottom: 4px;">
+        const entryId = Number(entry.id);
+        const hasId = Number.isFinite(entryId);
+        const entryColor = getSubcategoryColorForType(entryId);
+        const dataAttr = hasId ? `data-type-id="${entryId}"` : `data-type-id=""`;
+        const clickAttr = hasId ? `onclick="toggleLegendTypeFilter(${entryId}); event.stopPropagation();"` : '';
+        html += `<div class="legend-subcategory" ${dataAttr} ${clickAttr}>
+          <span class="legend-color-box" style="background-color: ${entryColor};"></span>
           ${entry.label}
         </div>`;
       }
@@ -2762,37 +2868,49 @@ function createAnimationLegend(features, typeMapping, year, district) {
     // Wetlands group
     if (wetlandGroup.length > 0) {
       html += `<div class="legend-group">
-        <div class="legend-group-header" data-category="wetlands">
+        <div class="legend-group-header" data-category="wetlands" onclick="setLegendCategoryFilter('wetlands');">
           <span class="legend-arrow" onclick="toggleLegendGroup(this.parentElement); event.stopPropagation();">▼</span>
-          <span class="legend-category-toggle" onclick="setLegendCategoryFilter('wetlands'); event.stopPropagation();">
-            <span class="legend-color-box" style="background-color: #0046c8; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
+          <span class="legend-category-toggle">
+            <span class="legend-color-box" style="background-color: #0046c8;"></span>
             <strong style="color: #0046c8;">Wetlands</strong>
           </span>
         </div>
         <div class="legend-group-content" style="display: block;">
       `;
       for (const entry of wetlandGroup) {
-        html += `<div style="margin-left: 15px; margin-bottom: 4px;">
+        const entryId = Number(entry.id);
+        const hasId = Number.isFinite(entryId);
+        const entryColor = getSubcategoryColorForType(entryId);
+        const dataAttr = hasId ? `data-type-id="${entryId}"` : `data-type-id=""`;
+        const clickAttr = hasId ? `onclick="toggleLegendTypeFilter(${entryId}); event.stopPropagation();"` : '';
+        html += `<div class="legend-subcategory" ${dataAttr} ${clickAttr}>
+          <span class="legend-color-box" style="background-color: ${entryColor};"></span>
           ${entry.label}
         </div>`;
       }
       html += `</div></div>`;
     }
-
+    
     // Cropland group
     if (croplandGroup.length > 0) {
       html += `<div class="legend-group">
-        <div class="legend-group-header" data-category="cropland">
+        <div class="legend-group-header" data-category="cropland" onclick="setLegendCategoryFilter('cropland');">
           <span class="legend-arrow" onclick="toggleLegendGroup(this.parentElement); event.stopPropagation();">▼</span>
-          <span class="legend-category-toggle" onclick="setLegendCategoryFilter('cropland'); event.stopPropagation();">
-            <span class="legend-color-box" style="background-color: #f2c94c; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
+          <span class="legend-category-toggle">
+            <span class="legend-color-box" style="background-color: #f2c94c;"></span>
             <strong style="color: #b38f00;">Cropland</strong>
           </span>
         </div>
         <div class="legend-group-content" style="display: block;">
       `;
       for (const entry of croplandGroup) {
-        html += `<div style="margin-left: 15px; margin-bottom: 4px;">
+        const entryId = Number(entry.id);
+        const hasId = Number.isFinite(entryId);
+        const entryColor = getSubcategoryColorForType(entryId);
+        const dataAttr = hasId ? `data-type-id="${entryId}"` : `data-type-id=""`;
+        const clickAttr = hasId ? `onclick="toggleLegendTypeFilter(${entryId}); event.stopPropagation();"` : '';
+        html += `<div class="legend-subcategory" ${dataAttr} ${clickAttr}>
+          <span class="legend-color-box" style="background-color: ${entryColor};"></span>
           ${entry.label}
         </div>`;
       }
@@ -2802,17 +2920,23 @@ function createAnimationLegend(features, typeMapping, year, district) {
     // Habitation group
     if (habitationGroup.length > 0) {
       html += `<div class="legend-group">
-        <div class="legend-group-header" data-category="habitation">
+        <div class="legend-group-header" data-category="habitation" onclick="setLegendCategoryFilter('habitation');">
           <span class="legend-arrow" onclick="toggleLegendGroup(this.parentElement); event.stopPropagation();">▼</span>
-          <span class="legend-category-toggle" onclick="setLegendCategoryFilter('habitation'); event.stopPropagation();">
-            <span class="legend-color-box" style="background-color: #c31400; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
+          <span class="legend-category-toggle">
+            <span class="legend-color-box" style="background-color: #c31400;"></span>
             <strong style="color: #c31400;">Habitation</strong>
           </span>
         </div>
         <div class="legend-group-content" style="display: block;">
       `;
       for (const entry of habitationGroup) {
-        html += `<div style="margin-left: 15px; margin-bottom: 4px;">
+        const entryId = Number(entry.id);
+        const hasId = Number.isFinite(entryId);
+        const entryColor = getSubcategoryColorForType(entryId);
+        const dataAttr = hasId ? `data-type-id="${entryId}"` : `data-type-id=""`;
+        const clickAttr = hasId ? `onclick="toggleLegendTypeFilter(${entryId}); event.stopPropagation();"` : '';
+        html += `<div class="legend-subcategory" ${dataAttr} ${clickAttr}>
+          <span class="legend-color-box" style="background-color: ${entryColor};"></span>
           ${entry.label}
         </div>`;
       }
@@ -2822,17 +2946,23 @@ function createAnimationLegend(features, typeMapping, year, district) {
     // Other group
     if (othersGroup.length > 0) {
       html += `<div class="legend-group">
-        <div class="legend-group-header" data-category="others">
+        <div class="legend-group-header" data-category="others" onclick="setLegendCategoryFilter('others');">
           <span class="legend-arrow" onclick="toggleLegendGroup(this.parentElement); event.stopPropagation();">▼</span>
-          <span class="legend-category-toggle" onclick="setLegendCategoryFilter('others'); event.stopPropagation();">
-            <span class="legend-color-box" style="background-color: #6a1b9a; width: 16px; height: 12px; display: inline-block; margin-right: 6px; vertical-align: middle;"></span>
+          <span class="legend-category-toggle">
+            <span class="legend-color-box" style="background-color: #6a1b9a;"></span>
             <strong style="color: #6a1b9a;">Other</strong>
           </span>
         </div>
         <div class="legend-group-content" style="display: block;">
       `;
       for (const entry of othersGroup) {
-        html += `<div style="margin-left: 15px; margin-bottom: 4px;">
+        const entryId = Number(entry.id);
+        const hasId = Number.isFinite(entryId);
+        const entryColor = getSubcategoryColorForType(entryId);
+        const dataAttr = hasId ? `data-type-id="${entryId}"` : `data-type-id=""`;
+        const clickAttr = hasId ? `onclick="toggleLegendTypeFilter(${entryId}); event.stopPropagation();"` : '';
+        html += `<div class="legend-subcategory" ${dataAttr} ${clickAttr}>
+          <span class="legend-color-box" style="background-color: ${entryColor};"></span>
           ${entry.label}
         </div>`;
       }
@@ -2903,10 +3033,10 @@ window.onload = () => {
         // Initialize animation controls only if required years exist
         const animationReady = setAnimationAvailability(years);
         if (animationReady) {
-          setTimeout(() => {
-            populateAnimationDistrictSelect();
-            updateAnimationSlider();
-          }, 100);
+        setTimeout(() => {
+          populateAnimationDistrictSelect();
+          updateAnimationSlider();
+        }, 100);
         }
       }
     })

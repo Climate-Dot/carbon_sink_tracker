@@ -13,7 +13,7 @@ import uuid
 load_dotenv("D:/ClimateDot/CarbonSink/Backend/credentials.env")
 
 # Configuration
-DOWNLOADS_2020_PATH = "D:/ClimateDot/Exports/2022_dissolved"
+DOWNLOADS_2020_PATH = "D:/ClimateDot/Exports/2014_dissolved"
 GEOJSON_PATTERN = "LULC_Vector_*.geojson"
 BATCH_SIZE = 1000
 
@@ -58,6 +58,38 @@ def extract_district_name(filename):
     basename = os.path.basename(filename)
     district_name = basename.replace("LULC_Vector_", "").replace(".geojson", "")
     return district_name
+
+
+def get_district_year_from_file(file_path):
+    """Read first feature to determine district_id and year for existence check."""
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not data.get("features"):
+            return None, None
+        props = data["features"][0].get("properties", {})
+        year = props.get("year", props.get("year_x"))
+        district_id = props.get("district_id")
+        return district_id, year
+    except Exception as e:
+        print(f"  Warning: could not read year/district from {file_path}: {e}")
+        return None, None
+
+
+def data_exists_for_district_year(cursor, district_id, year):
+    """Check if data already exists for a district/year combination."""
+    if district_id is None or year is None:
+        return False
+    try:
+        cursor.execute(
+            "SELECT COUNT(1) FROM fact_lulc_stats WHERE year = ? AND district_id = ?",
+            (year, district_id),
+        )
+        count = cursor.fetchone()[0]
+        return count > 0
+    except Exception as e:
+        print(f"  Warning: existence check failed for district {district_id}, year {year}: {e}")
+        return False
 
 
 def batch_insert_features(cursor, batch_data):
@@ -188,6 +220,10 @@ def main():
         # Process each file and commit per file to reduce transaction size
         for file_path in geojson_files:
             district_name = extract_district_name(file_path)
+            district_id, year = get_district_year_from_file(file_path)
+            if data_exists_for_district_year(cursor, district_id, year):
+                print(f"Skipping {district_name} (district_id={district_id}, year={year}) - already loaded")
+                continue
             features_processed = process_geojson_file(file_path, cursor, district_name)
 
             if features_processed > 0:

@@ -197,7 +197,7 @@ button {
 }
 
 .legend-group-header {
-    cursor: default;
+    cursor: pointer;
     user-select: none;
     display: flex;
     align-items: center;
@@ -215,7 +215,7 @@ button {
 .legend-category-toggle {
     display: inline-flex;
     align-items: center;
-    cursor: pointer;
+    cursor: inherit;
 }
 
 .legend-group-header:hover {
@@ -234,6 +234,25 @@ button {
 .legend-group-content {
     margin-top: 4px;
     transition: all 0.2s ease;
+}
+
+.legend-subcategory {
+    margin-left: 15px;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 4px;
+}
+
+.legend-subcategory:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.legend-subcategory.active {
+    background: rgba(47, 85, 119, 0.12);
 }
 
 #yearSliderContainer {
