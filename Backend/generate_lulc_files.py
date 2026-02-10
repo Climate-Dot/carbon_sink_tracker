@@ -4,17 +4,17 @@ This eliminates runtime WKT conversion overhead.
 
 Usage: python generate_lulc_files.py
 
-Output: static/lulc/{year}/district_{id}.geojson
+Output: Azure Blob Storage path lulc/{year}/district_{id}.geojson
 """
 
 import os
 import json
 import time
-from pathlib import Path
 from dotenv import load_dotenv
 import pyodbc
 from shapely import wkt
 from shapely.geometry import mapping
+from blob_storage import blob_exists, get_lulc_blob_path, upload_blob
 
 # Load environment variables
 env_path = os.path.join(os.path.dirname(__file__), "credentials.env")
@@ -41,18 +41,6 @@ def get_connection():
     )
     return pyodbc.connect(conn_str)
 
-def create_output_directories(base_path, years):
-    """Create directory structure for output files."""
-    base_dir = Path(base_path)
-    base_dir.mkdir(parents=True, exist_ok=True)
-    
-    for year in years:
-        year_dir = base_dir / str(year)
-        year_dir.mkdir(exist_ok=True)
-        print(f"Created directory: {year_dir}")
-    
-    return base_dir
-
 def get_all_years(conn):
     """Fetch all available years from the database."""
     cursor = conn.cursor()
@@ -69,14 +57,14 @@ def get_all_districts(conn):
     cursor.close()
     return districts
 
-def generate_geojson_for_district_year(conn, district_id, district_name, year, output_path):
+def generate_geojson_for_district_year(conn, district_id, district_name, year):
     """
-    Generate GeoJSON file for a specific district and year.
+    Generate GeoJSON blob for a specific district and year.
     Uses Reduce() in SQL to simplify geometries before fetching.
     """
-    output_file = output_path / str(year) / f"district_{district_id}.geojson"
-    if output_file.exists():
-        print(f"  {district_name} ({year}): skipped (file already exists)")
+    blob_path = get_lulc_blob_path(year, district_id)
+    if blob_exists(blob_path):
+        print(f"  {district_name} ({year}): skipped (blob already exists)")
         return 0, 0
 
     cursor = conn.cursor()
@@ -139,12 +127,11 @@ def generate_geojson_for_district_year(conn, district_id, district_name, year, o
         "type": "FeatureCollection",
         "features": features
     }
-    
-    # Write to file
-    with open(output_file, 'w') as f:
-        json.dump(geojson, f, separators=(',', ':'))  # Compact JSON
-    
-    file_size = os.path.getsize(output_file) / 1024  # KB
+
+    # Upload to blob storage
+    geojson_payload = json.dumps(geojson, separators=(',', ':'))
+    upload_blob(blob_path, geojson_payload, content_type="application/geo+json")
+    file_size = len(geojson_payload.encode("utf-8")) / 1024  # KB
     cursor.close()
     
     total_time = query_time + parse_time
@@ -157,9 +144,6 @@ def main():
     print("=" * 70)
     print("LULC GeoJSON Pre-Generation Script")
     print("=" * 70)
-    
-    # Output directory
-    output_base = Path(__file__).parent.parent / "static" / "lulc"
     
     print("\nConnecting to database...")
     conn = get_connection()
@@ -174,12 +158,8 @@ def main():
     districts = get_all_districts(conn)
     print(f"Found {len(districts)} districts")
     
-    # Create directory structure
-    print(f"\nCreating directory structure at: {output_base}")
-    create_output_directories(output_base, years)
-    
     # Generate files
-    print(f"\nGenerating GeoJSON files...")
+    print("\nGenerating GeoJSON blobs...")
     print(f"Total files to generate: {len(years) * len(districts)}")
     print("-" * 70)
     
@@ -193,7 +173,7 @@ def main():
         
         for district_id, district_name in districts:
             features, gen_time = generate_geojson_for_district_year(
-                conn, district_id, district_name, year, output_base
+                conn, district_id, district_name, year
             )
             total_features += features
             total_time += gen_time
@@ -210,14 +190,6 @@ def main():
     print(f"Total features: {total_features:,}")
     print(f"Total time: {total_time:.2f}s")
     print(f"Average time per file: {total_time/file_count:.2f}s")
-    
-    # Calculate total directory size
-    total_size = sum(
-        f.stat().st_size 
-        for f in output_base.rglob("*.geojson")
-    ) / (1024 * 1024)  # MB
-    print(f"Total size: {total_size:.2f} MB")
-    print(f"\nOutput location: {output_base.absolute()}")
     
     conn.close()
     print("\nAll done! You can now restart the FastAPI server.")

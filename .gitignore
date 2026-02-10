@@ -4,3 +4,4 @@ venv/
 *.geojson
 *.json
 .cursor/
+*.md

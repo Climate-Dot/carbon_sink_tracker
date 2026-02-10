@@ -23,6 +23,7 @@ import shapely.ops as ops                             # For geometry transformat
 from pyproj import Transformer                        # For coordinate transformations
 import pandas as pd                                 # For Excel file processing
 import numpy as np                                  # For numerical operations
+from blob_storage import blob_exists, download_blob, get_lulc_blob_path
 # ==========================
 
 # ==========================
@@ -291,47 +292,51 @@ def get_lulc(district_id: list[str] = Query(...), year: int = Query(...)):
     start_time = time.time()
     logger.info(f"LULC request: {len(district_id)} districts, year {year}")
     
-    # FAST PATH: Try to serve from pre-generated files
-    static_lulc_path = os.path.join(os.path.dirname(__file__), "..", "static", "lulc")
+    # FAST PATH: Try to serve from pre-generated blobs
     
-    # If single district, try to load pre-generated file
+    # If single district, try to load pre-generated blob
     if len(district_id) == 1:
-        file_path = os.path.join(static_lulc_path, str(year), f"district_{district_id[0]}.geojson")
-        
-        if os.path.exists(file_path):
-            logger.info(f"   ✓ Serving pre-generated file: {file_path}")
-            try:
-                with open(file_path, 'r') as f:
-                    geojson = json.load(f)
-                total_time = time.time() - start_time
-                logger.info(f"✅ File served in {total_time:.3f}s (pre-generated)")
-                return geojson
-            except Exception as e:
-                logger.warning(f"   ⚠️  Failed to load pre-generated file: {e}, falling back to database")
+        try:
+            blob_path = get_lulc_blob_path(year, district_id[0])
+
+            if blob_exists(blob_path):
+                logger.info(f"   ✓ Serving pre-generated blob: {blob_path}")
+                try:
+                    geojson_bytes = download_blob(blob_path)
+                    geojson = json.loads(geojson_bytes.decode("utf-8"))
+                    total_time = time.time() - start_time
+                    logger.info(f"✅ File served in {total_time:.3f}s (pre-generated)")
+                    return geojson
+                except Exception as e:
+                    logger.warning(
+                        f"   ⚠️  Failed to load pre-generated blob: {e}, falling back to database"
+                    )
+        except Exception as e:
+            logger.warning(f"   ⚠️  Blob storage not available: {e}, falling back to database")
     
     # If multiple districts, try to merge pre-generated files
     if len(district_id) > 1:
         try:
             merged_features = []
             all_files_exist = True
-            
+
             for dist_id in district_id:
-                file_path = os.path.join(static_lulc_path, str(year), f"district_{dist_id}.geojson")
-                if os.path.exists(file_path):
-                    with open(file_path, 'r') as f:
-                        data = json.load(f)
-                        merged_features.extend(data.get("features", []))
+                blob_path = get_lulc_blob_path(year, dist_id)
+                if blob_exists(blob_path):
+                    geojson_bytes = download_blob(blob_path)
+                    data = json.loads(geojson_bytes.decode("utf-8"))
+                    merged_features.extend(data.get("features", []))
                 else:
                     all_files_exist = False
                     break
-            
+
             if all_files_exist and merged_features:
                 geojson = {"type": "FeatureCollection", "features": merged_features}
                 total_time = time.time() - start_time
                 logger.info(f"✅ Merged {len(district_id)} pre-generated files in {total_time:.3f}s")
                 return geojson
         except Exception as e:
-            logger.warning(f"   ⚠️  Failed to merge pre-generated files: {e}, falling back to database")
+            logger.warning(f"   ⚠️  Failed to merge pre-generated blobs: {e}, falling back to database")
     
     # FALLBACK PATH: Query database (slower)
     logger.info("   ⏳ No pre-generated files found, querying database...")
