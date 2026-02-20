@@ -78,7 +78,7 @@ docker build -t carbon-sink .
 Use `credentials.env` as an env file and expose the API port:
 
 ```bash
-docker run -d \
+docker run -it --rm \
   --name carbon-sink \
   -p 8000:8000 \
   --env-file Backend/credentials.env \
@@ -88,7 +88,7 @@ docker run -d \
 **PowerShell:**
 
 ```powershell
-docker run -d `
+docker run -it --rm `
   --name carbon-sink `
   -p 8000:8000 `
   --env-file Backend/credentials.env `
@@ -98,7 +98,7 @@ docker run -d `
 **macOS/Linux:**
 
 ```bash
-docker run -d \
+docker run -it --rm \
   --name carbon-sink \
   -p 8000:8000 \
   --env-file Backend/credentials.env \

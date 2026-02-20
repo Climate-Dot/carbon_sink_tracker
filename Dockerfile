@@ -30,7 +30,7 @@ EXPOSE 8000
 
 # Copy startup script
 COPY start.sh /app/start.sh
-RUN chmod +x /app/start.sh
+RUN sed -i 's/\r$//' /app/start.sh && chmod +x /app/start.sh
 
 # Run FastAPI with startup script
-CMD ["/app/start.sh"]
+CMD ["bash", "/app/start.sh"]
