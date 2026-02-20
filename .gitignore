@@ -5,3 +5,5 @@ venv/
 *.json
 .cursor/
 *.md
+!.vscode/*.json
+!README.md
