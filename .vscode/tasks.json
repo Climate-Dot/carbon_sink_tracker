@@ -1,0 +1,106 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "docker-build",
+      "type": "shell",
+      "command": "docker build -t carbon-sink .",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {}
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "docker-build: debug",
+      "type": "docker-build",
+      "dockerBuild": {
+        "context": "${workspaceFolder}",
+        "dockerfile": "${workspaceFolder}/Dockerfile.local",
+        "tag": "carbon-sink-debug:dev"
+      }
+    },
+    {
+      "label": "docker-pre-clean: debug",
+      "type": "shell",
+      "command": "docker rm -f carbon-sink-debug 2>/dev/null || true",
+      "windows": {
+        "command": "docker rm -f carbon-sink-debug 2>$null"
+      },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "docker-run: debug",
+      "type": "docker-run",
+    //   "dependsOn": ["docker-build: debug", "docker-pre-clean: debug"],
+    //   "dependsOrder": "sequence",
+      "dependsOn": ["docker-build: debug"],
+      "dockerRun": {
+        "containerName": "carbon-sink-debug",
+        "image": "carbon-sink-debug:dev",
+        "ports": [
+          {
+            "containerPort": 8000,
+            "hostPort": 8000
+          }
+        ],
+        "volumes": [
+          {
+            "localPath": "${workspaceFolder}",
+            "containerPath": "/app"
+          }
+        ],
+        "envFiles": [
+          "${workspaceFolder}/Backend/credentials.env"
+        ],
+        "env": {
+          "PYTHONPATH": "/app:/app/Backend"
+        }
+      },
+      "python": {
+        "module": "uvicorn",
+        "args": [
+          "Backend.main:app",
+          "--host",
+          "0.0.0.0",
+          "--port",
+          "8000",
+          "--reload"
+        ]
+      }
+    },
+    {
+      "label": "docker-run: release",
+      "type": "shell",
+      "command": "docker run -d --name carbon-sink -p 8000:8000 --env-file \"${workspaceFolder}/Backend/credentials.env\" carbon-sink",
+      "windows": {
+        "command": "docker run -d --name carbon-sink -p 8000:8000 --env-file \"${workspaceFolder}/Backend/credentials.env\" carbon-sink"
+      },
+      "dependsOn": ["docker-build"],
+      "dependsOrder": "sequence",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "docker-stop: debug",
+      "type": "shell",
+      "command": "docker stop carbon-sink-debug 2>/dev/null; docker rm carbon-sink-debug 2>/dev/null",
+      "windows": {
+        "command": "docker stop carbon-sink-debug 2>$null; docker rm carbon-sink-debug 2>$null"
+      },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

@@ -23,7 +23,7 @@ import shapely.ops as ops                             # For geometry transformat
 from pyproj import Transformer                        # For coordinate transformations
 import pandas as pd                                 # For Excel file processing
 import numpy as np                                  # For numerical operations
-from blob_storage import blob_exists, download_blob, get_lulc_blob_path
+from Backend.blob_storage import blob_exists, download_blob, get_lulc_blob_path
 # ==========================
 
 # ==========================

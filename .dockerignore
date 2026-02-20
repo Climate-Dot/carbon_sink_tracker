@@ -4,6 +4,7 @@ venv/
 *.geojson
 *.json
 .cursor/
+.vscode/
 *.md
-!.vscode/*.json
-!README.md
+.git
+.gitignore
