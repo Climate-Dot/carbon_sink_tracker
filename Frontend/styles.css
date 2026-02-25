@@ -85,6 +85,15 @@ body {
     color: #2f5577;
 }
 
+#logo-link {
+    display: flex;
+    align-items: center;
+    text-decoration: none;
+    color: inherit;
+}
+#logo-link:hover {
+    opacity: 0.9;
+}
 #logo {
     width: 60px;
     height: auto;
@@ -187,6 +196,36 @@ button {
     z-index: 500 !important;
 }
 
+/* Minimized legend state */
+.info.legend.minimized {
+    max-height: 40px;
+    overflow: hidden;
+}
+
+.info.legend.minimized .legend-groups-container {
+    display: none;
+}
+
+.legend-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px;
+}
+
+.legend-header-row h4 {
+    margin: 0;
+}
+
+.legend-main-arrow {
+    font-size: 10px;
+    color: #666;
+    transition: transform 0.2s ease;
+    display: inline-block;
+    width: 12px;
+    cursor: pointer;
+}
+
 .legend-groups-container {
     display: grid;
     grid-template-columns: 1fr;
@@ -274,10 +313,12 @@ button {
 
 #district-checkboxes {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    /* Auto-fit prevents forcing a too-wide 2-col layout and avoids horizontal scrolling */
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
     gap: 7px 12px;
     margin-top: 6px;
     overflow-y: auto;
+    overflow-x: hidden;
 }
 
 /* ==========================================================================
@@ -792,6 +833,10 @@ canvas[id*="ChartCanvas"] {
   text-align: left;
   position: relative;
   transition: all 0.2s ease;
+  /* Prevent the button from creating horizontal scroll when text is long */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 #districtDropdownBtn:hover {
   background-color: #f9f9f9;
@@ -823,8 +868,8 @@ canvas[id*="ChartCanvas"] {
   left: 0;
   z-index: 1100;
   width: 100%;
-  min-width: 250px;
-  max-width: 400px;
+  min-width: 0;
+  max-width: 100%;
   background: #fff;
   border: 1px solid #ccc;
   box-shadow: 0 6px 18px rgba(0,0,0,0.20), 0 1.5px 6px rgba(0,0,0,0.09);
@@ -832,7 +877,27 @@ canvas[id*="ChartCanvas"] {
   border-radius: 10px;
   max-height: 300px;
   overflow-y: auto;
+  overflow-x: hidden;
   font-size: 15px;
+}
+
+/* District checkbox rows: allow wrapping, avoid overflow */
+#district-checkboxes > div {
+  min-width: 0;
+  align-items: flex-start !important; /* override inline alignItems=center */
+}
+
+#district-checkboxes > div > label {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+#district-checkboxes input[type="checkbox"] {
+  flex: 0 0 auto;
+  margin-top: 2px;
 }
 #districtDropdown .district-checkbox {
   display: block;

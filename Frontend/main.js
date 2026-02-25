@@ -1,6 +1,9 @@
 
 // Initialize Leaflet map centered on Gujarat
-const map = L.map("map").setView([22.5, 72.5], 9); // Gujarat center
+// Limit zoom to keep navigation usable and prevent extreme zoom-in/out.
+const MAP_MIN_ZOOM = 6;
+const MAP_MAX_ZOOM = 16;
+const map = L.map("map", { minZoom: MAP_MIN_ZOOM, maxZoom: MAP_MAX_ZOOM }).setView([22.5, 72.5], 9); // Gujarat center
 
 // Configurable API base URL: set window.API_BASE in production (e.g., Render)
 // Empty string is valid for same-origin requests, so check for undefined/null explicitly
@@ -662,6 +665,35 @@ async function loadLULC() {
     return;
   }
 
+  // If exactly one district is selected, automatically sync it to the
+  // animation dropdown so users can immediately animate that same district.
+  if (districts.length === 1) {
+    try {
+      const singleDistrict = districts[0];
+      const animationSelect = document.getElementById('animationDistrictSelect');
+      if (animationSelect) {
+        // Ensure the options are populated (populateAnimationDistrictSelect is
+        // already called during app init, so this is usually a no-op).
+        if (animationSelect.options.length <= 1) {
+          await populateAnimationDistrictSelect();
+        }
+        // Match on value, which is already formatted like the checkbox labels.
+        const optionToSelect = Array.from(animationSelect.options).find(
+          opt => opt.value === singleDistrict
+        );
+        if (optionToSelect) {
+          animationSelect.value = singleDistrict;
+          // Trigger the same handler as a manual change so animation data
+          // preloads and the Play button becomes ready.
+          const changeEvent = new Event('change', { bubbles: true });
+          animationSelect.dispatchEvent(changeEvent);
+        }
+      }
+    } catch {
+      // If anything goes wrong, fail silently; loading LULC should still work.
+    }
+  }
+
   // Remove previous layers
   if (villageLayer) map.removeLayer(villageLayer);
   if (legend) map.removeControl(legend);
@@ -900,13 +932,16 @@ async function loadLULC() {
     legend = L.control({ position: "bottomright" });
     legend.onAdd = function (map) {
       const div = L.DomUtil.create("div", "info legend");
-      let html = `<h4>${
-        filterType === "forest"
-          ? "Forest & Wetland"
-          : filterType === "wetland"
-          ? "Wetlands"
-          : "LULC Legend"
-      }</h4>`;
+      let html = `<div class="legend-header-row" onclick="toggleLegendMinimize(this); event.stopPropagation();">
+        <span class="legend-arrow legend-main-arrow">▼</span>
+        <h4>${
+          filterType === "forest"
+            ? "Forest & Wetland"
+            : filterType === "wetland"
+            ? "Wetlands"
+            : "LULC Legend"
+        }</h4>
+      </div>`;
       
       // Start container for two-column layout
       html += `<div class="legend-groups-container">`;
@@ -1228,10 +1263,11 @@ function downloadLULC() {
     return;
   }
 
-  // Convert to CSV
+  // Convert to CSV (include attribution)
+  const attribution = "Carbon Sink Tracker - Climate Dot,https://climatedot.org/";
   const headers = ["District", "LULC Type", "Area (ha)"];
   const rows = features.map((f) => [f.district, f.lulc_type, f.area].join(","));
-  const csvContent = [headers.join(","), ...rows].join("\n");
+  const csvContent = [attribution, "", headers.join(","), ...rows].join("\n");
 
   // Create and trigger download
   const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -1244,7 +1280,7 @@ function downloadLULC() {
   document.body.removeChild(a);
 }
 
-// Download chart as PNG
+// Download chart as PNG with Climate Dot logo and link
 function downloadChart(canvasId, filename) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) {
@@ -1252,15 +1288,24 @@ function downloadChart(canvasId, filename) {
     return;
   }
 
-  // Convert canvas to PNG data URL
-  const dataURL = canvas.toDataURL('image/png');
-  
-  // Create download link
+  // Add footer with attribution only (no image - drawing the logo would taint the canvas and block export)
+  const footerHeight = 28;
+  const out = document.createElement('canvas');
+  out.width = canvas.width;
+  out.height = canvas.height + footerHeight;
+  const ctx = out.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, out.width, out.height);
+  ctx.drawImage(canvas, 0, 0);
+  ctx.fillStyle = '#666';
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Climate Dot | climatedot.org', out.width / 2, canvas.height + 18);
+
+  const dataURL = out.toDataURL('image/png');
   const link = document.createElement('a');
   link.download = `${filename}_${new Date().toISOString().split('T')[0]}.png`;
   link.href = dataURL;
-  
-  // Trigger download
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -2321,7 +2366,8 @@ function getChartOptions(title) {
 function toggleLegendGroup(header) {
   const content = header.nextElementSibling;
   const arrow = header.querySelector('.legend-arrow');
-  
+  if (!content || !arrow) return;
+
   if (content.style.display === 'none') {
     content.style.display = 'block';
     arrow.textContent = '▼';
@@ -2330,6 +2376,17 @@ function toggleLegendGroup(header) {
     content.style.display = 'none';
     arrow.textContent = '▶';
     arrow.style.transform = 'rotate(0deg)';
+  }
+}
+
+// Minimize / expand the entire legend panel
+function toggleLegendMinimize(header) {
+  const legendEl = header.closest('.info.legend');
+  if (!legendEl) return;
+  const arrow = header.querySelector('.legend-main-arrow');
+  const isMinimized = legendEl.classList.toggle('minimized');
+  if (arrow) {
+    arrow.textContent = isMinimized ? '▶' : '▼';
   }
 }
 
@@ -2404,6 +2461,7 @@ function toggleLegendTypeFilter(typeId) {
 
 // Make toggleLegendGroup available globally
 window.toggleLegendGroup = toggleLegendGroup;
+window.toggleLegendMinimize = toggleLegendMinimize;
 window.setLegendCategoryFilter = setLegendCategoryFilter;
 window.toggleLegendTypeFilter = toggleLegendTypeFilter;
 
@@ -2568,6 +2626,27 @@ function toggleDistrictAnimation() {
     document.getElementById('animationStatus').textContent = `Paused: ${displayDistrict}`;
   } else {
     // Start animation
+    // When animation starts, hide any previously loaded "normal" LULC layers
+    // and their legend so the user sees only the animation view.
+    try {
+      if (Array.isArray(loadedLulcLayers)) {
+        loadedLulcLayers.forEach(layer => {
+          if (layer && map.hasLayer(layer)) {
+            map.removeLayer(layer);
+          }
+        });
+      }
+      if (typeof legend !== 'undefined' && legend && map.hasControl && map.hasControl(legend)) {
+        // Fallback: use removeControl if available
+        if (map.removeControl) {
+          map.removeControl(legend);
+        }
+      } else if (typeof legend !== 'undefined' && legend && map.removeControl) {
+        map.removeControl(legend);
+      }
+    } catch {
+      // If cleanup fails, animation should still proceed.
+    }
     if (!currentAnimationYear) {
       currentAnimationYear = Math.min(...availableYears);
     }
