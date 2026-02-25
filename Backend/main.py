@@ -21,10 +21,23 @@ from shapely import wkt, wkb                        # For parsing WKT geometries
 from shapely.geometry import mapping, shape               # For converting geometries to/from GeoJSON
 import shapely.ops as ops                             # For geometry transformations
 from pyproj import Transformer                        # For coordinate transformations
-import pandas as pd                                 # For Excel file processing
-import numpy as np                                  # For numerical operations
+import pandas as pd                                   # For Excel file processing
+import numpy as np                                    # For numerical operations
 from Backend.blob_storage import blob_exists, download_blob, get_lulc_blob_path
 # ==========================
+
+
+def _normalize_district_name(name: str) -> str:
+    """Normalize district name spellings coming from DB/Excel."""
+    if not isinstance(name, str):
+        return name
+    name = name.strip()
+    if not name:
+        return name
+    # Correct common misspelling
+    if name.lower() == "ahmadabad":
+        return "Ahmedabad"
+    return name
 
 # ==========================
 # FastAPI App
@@ -144,6 +157,7 @@ async def lifespan(app: FastAPI):
 
     district_features = []
     for i, (id_, name, geom_wkt, state_id) in enumerate(cur.fetchall(), start=1):
+        name = _normalize_district_name(name)
         geom = wkt.loads(geom_wkt)
         district_features.append(
             {
@@ -168,8 +182,14 @@ async def lifespan(app: FastAPI):
     # District names for search/filter UI
     logger.info("Loading district names from database...")
     cur.execute("SELECT DISTINCT name FROM district_boundaries ORDER BY name;")
-    districts = [row[0] for row in cur.fetchall()]
-    
+    raw_districts = [row[0] for row in cur.fetchall()]
+
+    # Normalize spellings and ensure Ahmedabad is present
+    district_set = {_normalize_district_name(name) for name in raw_districts}
+    district_set.add("Ahmedabad")
+    # Sort case-insensitively so names like "Ahmedabad" appear in correct order
+    districts = sorted(district_set, key=lambda n: n.lower())
+
     app.state.districts = districts
     logger.info(f"District names loaded: {len(districts)} names")
     
@@ -734,7 +754,8 @@ def process_district_data(district_df):
         
         # Map Excel district names to frontend expected names
         district_name_mapping = {
-            'Ahmadabad': 'Ahmadabad',
+            # Correct spelling expected by UI/data consumers
+            'Ahmadabad': 'Ahmedabad',
             'Amreli': 'Amreli',
             'Anand': 'Anand',
             'Arvalli': 'Arvalli',
@@ -822,7 +843,8 @@ def process_wetland_district_data(district_df):
         
         # Map Excel district names to frontend expected names
         district_name_mapping = {
-            'Ahmadabad': 'Ahmadabad',
+            # Correct spelling expected by UI/data consumers
+            'Ahmadabad': 'Ahmedabad',
             'Amreli': 'Amreli',
             'Anand': 'Anand',
             'Arvalli': 'Arvalli',
